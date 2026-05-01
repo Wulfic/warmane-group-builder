@@ -1,0 +1,40 @@
+## Interface: 30300
+## Title: Warmane Group Builder
+## Notes: LFM advertisement, auto-invite, inspection and loot-rule manager for Warmane PUGs.
+## Author: tyler
+## Version: 0.1.0
+## X-Website: https://github.com/tyler/warmane-group-builder
+## SavedVariables: WGB_Settings
+## SavedVariablesPerCharacter: WGB_CharSettings
+
+# Locales (must load first so L is populated before any module reads it)
+Locales\Locale-enUS.lua
+Locales\Locale-deDE.lua
+
+# Core
+Core\Core.lua
+Core\Events.lua
+Core\Utils.lua
+
+# Modules
+Modules\ActivityDB.lua
+Modules\Requirements.lua
+Modules\LootRules.lua
+Modules\GearScore.lua
+Modules\Inspection.lua
+Modules\Advertisement.lua
+Modules\AutoInvite.lua
+Modules\GroupManager.lua
+
+# UI
+UI\MainWindow.lua
+UI\RequirementsPanel.lua
+UI\LootRulesPanel.lua
+UI\AdvertPanel.lua
+UI\InspectionPopup.lua
+UI\GroupStatusPanel.lua
+UI\ConfigPanel.lua
+UI\MinimapButton.lua
+
+# Slash commands wired last so every module is registered
+Core\Slash.lua
