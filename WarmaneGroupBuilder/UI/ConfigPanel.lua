@@ -8,8 +8,10 @@ WGB.ConfigPanel = Panel
 local frame
 local w = {}
 
+local multiEditCount = 0
 local function multiEdit(parent, x, y, width, height, onCommit)
-    local sf = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+    multiEditCount = multiEditCount + 1
+    local sf = CreateFrame("ScrollFrame", "WGBConfigScrollFrame" .. multiEditCount, parent, "UIPanelScrollFrameTemplate")
     sf:SetPoint("TOPLEFT", x, y); sf:SetSize(width, height)
     local eb = CreateFrame("EditBox", nil, sf)
     eb:SetMultiLine(true); eb:SetFontObject(GameFontHighlight)
@@ -32,18 +34,19 @@ local function build()
 
     local lbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     lbl:SetPoint("TOPLEFT", 8, -8); lbl:SetText(L["WHISPER_RESPONSE"] .. " ({player} = invitee name):")
-    w.whisper = multiEdit(frame, 8, -32, 460, 60,
+    -- Width leaves room on the right for the UIPanelScrollFrameTemplate scrollbar.
+    w.whisper = multiEdit(frame, 8, -32, 480, 60,
         function(t) WGB_Settings.whisperResponse = t end)
 
     local kwLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    kwLbl:SetPoint("TOPLEFT", 8, -100); kwLbl:SetText(L["AUTO_INVITE_KEYWORD"] .. " (blank = any whisper):")
+    kwLbl:SetPoint("TOPLEFT", 8, -110); kwLbl:SetText(L["AUTO_INVITE_KEYWORD"] .. " (blank = any whisper):")
     w.kw = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-    w.kw:SetPoint("TOPLEFT", 8, -120); w.kw:SetSize(220, 22)
+    w.kw:SetPoint("TOPLEFT", 8, -132); w.kw:SetSize(260, 22)
     w.kw:SetAutoFocus(false); w.kw:SetMaxLetters(40)
     w.kw:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     w.kw:SetScript("OnEditFocusLost", function(self) WGB_Settings.autoInviteKeyword = self:GetText() or "" end)
 
-    w.minimap = check(frame, L["SHOW_MINIMAP"], 8, -150, function(v)
+    w.minimap = check(frame, L["SHOW_MINIMAP"], 8, -170, function(v)
         WGB_Settings.showMinimap = v
         if WGB.MinimapButton then WGB.MinimapButton:SetShown(v) end
     end)

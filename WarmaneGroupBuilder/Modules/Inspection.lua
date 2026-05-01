@@ -1,14 +1,21 @@
 -- Modules/Inspection.lua
 -- Serial inspection queue. NotifyInspect has a server-side ~1.5s cooldown and
--- INSPECT_READY may not fire at all on a flaky connection — so we hard-cap with
--- a 5s timeout. Never run more than one inspection in flight.
+-- INSPECT_READY may not fire at all (combat, out of range, another addon firing
+-- NotifyInspect in the same frame). Rules:
+--   * Hard timeout: 3s, with one automatic retry before giving up.
+--   * Guard: skip while the player is in combat (server silently drops the request).
+--   * GUID validation: ignore INSPECT_READY events not for our pending unit.
+--   * ClearInspectPlayer after each result to keep the client cache clean.
+--   * Re-kick the queue on PLAYER_REGEN_ENABLED (combat ends).
 
 local WGB = _G.WGB
 local L = WGB.L
 
+local INSPECT_TIMEOUT   = 3.0   -- seconds before we consider an inspect stalled
+
 local Inspection = {
     queue           = {},     -- list of { name } -- unit token resolved at use time
-    pending         = nil,    -- { name, startedAt }
+    pending         = nil,    -- { name, startedAt, retried, guid }
     results         = {},     -- [playerName] = result
     timer           = nil,
 }
@@ -180,11 +187,26 @@ local function gatherResult(unit)
         end
     end
 
-    -- GearScore
+    -- GearScore: synchronous attempt now, then a deferred retry to fill in
+    -- the result if items hadn't cached client-side yet (or the external GS
+    -- backend wasn't ready). We re-fire INSPECTION_COMPLETE on update so
+    -- panels showing "..." can refresh.
     if WGB.GearScore then
-        local gs, approx = WGB.GearScore:GetScore(unit)
+        local gs, approx, missing = WGB.GearScore:GetScore(unit)
         result.gearScore = gs
         result.approximateGS = approx and true or false
+        if (not gs) or (approx and (missing or 0) > 0) then
+            local pname = result.name
+            WGB.GearScore:GetScoreDeferred(unit, pname, function(score, isApprox)
+                local stored = Inspection.results[pname]
+                if not stored then return end
+                if score and score > 0 then
+                    stored.gearScore = score
+                    stored.approximateGS = isApprox and true or false
+                    WGB.Events:Fire("INSPECTION_COMPLETE", pname, stored)
+                end
+            end, 4)
+        end
     end
 
     return result
@@ -241,17 +263,29 @@ function Inspection:_kick()
 end
 
 function Inspection:_pump()
+    -- Don't attempt any inspect while in combat — server silently drops the request.
+    if UnitAffectingCombat("player") then return end
+
     if self.pending then
-        -- timeout check
-        if (GetTime() - self.pending.startedAt) > 5.0 then
-            local timedOutName = self.pending.name
-            WGB.Debug(L["INSPECT_TIMEOUT"]:format(timedOutName))
-            self.pending = nil
-            WGB.Events:Fire("INSPECTION_TIMEOUT", timedOutName)
-        else
+        local elapsed = GetTime() - self.pending.startedAt
+        if elapsed <= INSPECT_TIMEOUT then return end
+
+        -- Timed out. Try one automatic retry if the unit is still in range.
+        local timedOutName = self.pending.name
+        local unit = resolveUnit(timedOutName)
+        if not self.pending.retried and unit and UnitExists(unit) and WGB.InInspectRange(unit) then
+            WGB.Debug(("Inspect retry: %s"):format(timedOutName))
+            self.pending = { name = timedOutName, startedAt = GetTime(), retried = true }
+            NotifyInspect(unit)
             return
         end
+
+        WGB.Debug(L["INSPECT_TIMEOUT"]:format(timedOutName))
+        ClearInspectPlayer()
+        self.pending = nil
+        WGB.Events:Fire("INSPECTION_TIMEOUT", timedOutName)
     end
+
     if #self.queue == 0 then
         stopTimerIfIdle()
         return
@@ -265,9 +299,8 @@ function Inspection:_pump()
             picked, pickedIndex, pickedUnit = item, i, unit
             break
         elseif not unit then
-            -- player has left the group; drop the entry
+            -- Player left the group; drop silently.
             table.remove(self.queue, i)
-            -- index shift: restart loop
             return self:_pump()
         end
     end
@@ -276,12 +309,12 @@ function Inspection:_pump()
     table.remove(self.queue, pickedIndex)
 
     if not WGB.Throttle("notifyinspect", 1.6) then
-        -- shouldn't happen because pump runs at 0.5s but be safe
         table.insert(self.queue, 1, picked)
         return
     end
 
-    self.pending = { name = picked.name, startedAt = GetTime() }
+    local pendingGuid = UnitGUID(pickedUnit)
+    self.pending = { name = picked.name, startedAt = GetTime(), retried = false, guid = pendingGuid }
     NotifyInspect(pickedUnit)
     WGB.Debug(L["INSPECTING"]:format(picked.name))
 end
@@ -290,16 +323,37 @@ end
 local listener = CreateFrame("Frame")
 listener:RegisterEvent("INSPECT_READY")           -- modern name (may not exist 3.3.5a)
 listener:RegisterEvent("INSPECT_TALENT_READY")    -- 3.3.5a name
+listener:RegisterEvent("PLAYER_REGEN_ENABLED")    -- combat ended
 listener:SetScript("OnEvent", function(_, event, guid)
+    if event == "PLAYER_REGEN_ENABLED" then
+        -- Resume any stalled queue once combat drops.
+        if #Inspection.queue > 0 or Inspection.pending then
+            Inspection:_kick()
+        end
+        return
+    end
+
+    -- INSPECT_READY / INSPECT_TALENT_READY
     local p = Inspection.pending
     if not p then return end
+
+    -- Validate GUID: ignore results fired for a unit we didn't request.
+    -- guid may be nil on servers that don't pass it; fall back to trusting order.
+    if guid and p.guid and guid ~= p.guid then
+        WGB.Debug(("Ignoring INSPECT_READY for foreign GUID (wanted %s, got %s)"):format(
+            tostring(p.guid), tostring(guid)))
+        return
+    end
+
     local unit = resolveUnit(p.name)
     if not unit or not UnitExists(unit) then
+        ClearInspectPlayer()
         Inspection.pending = nil
         stopTimerIfIdle()
         return
     end
     local result = gatherResult(unit)
+    ClearInspectPlayer()
     Inspection.results[p.name] = result
     Inspection.pending = nil
     WGB.Events:Fire("INSPECTION_COMPLETE", p.name, result)

@@ -20,14 +20,40 @@ end
 
 local function build()
     if button then return end
+    -- Parent to Minimap so MinimapButtonFrame / Chinchilla button-collectors
+    -- can adopt this button by name. (Earlier "clipping" worry was incorrect:
+    -- the minimap mask only affects the map texture, not child buttons.)
     local b = CreateFrame("Button", "WGBMinimapButton", Minimap)
-    b:SetSize(31, 31)
+    b:SetSize(32, 32)
     b:SetFrameStrata("MEDIUM")
-    b:SetFrameLevel(8)
+    b:SetFrameLevel(Minimap:GetFrameLevel() + 8)
 
-    b:SetNormalTexture("Interface\\Icons\\INV_Misc_GroupNeedMore")
-    b:GetNormalTexture():SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    -- Background (circular, dark) so the icon stays readable on any minimap.
+    local bg = b:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    bg:SetVertexColor(0, 0, 0, 0.6)
+    bg:SetPoint("TOPLEFT", 2, -2)
+    bg:SetPoint("BOTTOMRIGHT", -2, 2)
 
+    -- Main icon: LFG eye texture, bright and recognizable on any minimap.
+    b:SetNormalTexture("Interface\\LFGFrame\\UI-LFG-PORTRAIT")
+    local nt = b:GetNormalTexture()
+    nt:SetTexCoord(0.05, 0.95, 0.05, 0.95)
+    nt:ClearAllPoints()
+    nt:SetPoint("TOPLEFT",     b, "TOPLEFT",      4, -4)
+    nt:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -4,  4)
+
+    -- Push/highlight feedback so it feels like a real minimap button.
+    b:SetPushedTexture("Interface\\LFGFrame\\UI-LFG-PORTRAIT")
+    local pt = b:GetPushedTexture()
+    pt:SetTexCoord(0.05, 0.95, 0.05, 0.95)
+    pt:ClearAllPoints()
+    pt:SetPoint("TOPLEFT",     b, "TOPLEFT",      5, -5)
+    pt:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -3,  3)
+
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+
+    -- Tracking-border ring on top.
     local overlay = b:CreateTexture(nil, "OVERLAY")
     overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     overlay:SetSize(54, 54)

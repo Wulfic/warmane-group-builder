@@ -21,7 +21,8 @@ local function buildFrame()
         tile = true, tileSize = 32, edgeSize = 32,
         insets = { left = 11, right = 12, top = 12, bottom = 11 },
     })
-    f:SetSize(WGB_Settings.mainWindow.width or 520, WGB_Settings.mainWindow.height or 600)
+    f:SetSize(math.max(WGB_Settings.mainWindow.width or 580, 580),
+              math.max(WGB_Settings.mainWindow.height or 620, 620))
     f:SetPoint(WGB_Settings.mainWindow.point or "CENTER",
                WGB_Settings.mainWindow.x or 0, WGB_Settings.mainWindow.y or 0)
     f:SetMovable(true); f:EnableMouse(true)
@@ -47,10 +48,11 @@ local function buildFrame()
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -4, -4)
 
-    -- Content area
-    local content = CreateFrame("Frame", nil, f)
+    -- Content area – explicit level keeps panel children above the backdrop.
+    local content = CreateFrame("Frame", "WGBMainContent", f)
     content:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -56)
     content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 16)
+    content:SetFrameLevel(f:GetFrameLevel() + 2)
     f.content = content
 
     tinsert(UISpecialFrames, "WGBMainFrame")
@@ -76,6 +78,8 @@ function MainWindow:RegisterTab(id, label, frame)
     frame:SetParent(self.frame.content)
     frame:ClearAllPoints()
     frame:SetAllPoints(self.frame.content)
+    frame:SetFrameStrata("MEDIUM")
+    frame:SetFrameLevel(self.frame.content:GetFrameLevel() + 1)
     frame:Hide()
 
     local b = CreateFrame("Button", "WGBTab_" .. id, self.frame, "UIPanelButtonTemplate")

@@ -8,11 +8,25 @@ local L = WGB.L
 
 local MIN_SEND_GAP = 30  -- server etiquette: 30s minimum between channel sends
 
+-- Order matters: this is the rotation order. Each entry resolves to a chat
+-- target at send-time. "channel" entries are numbered channels you must have
+-- joined; "type" entries are direct chat types (YELL, SAY, GUILD).
+local ADVERT_TARGETS = {
+    { key = "global", kind = "channel", names = { "global", "World" } },
+    { key = "trade",  kind = "channel", names = { "Trade - City", "Trade" } },
+    { key = "lfg",    kind = "channel", names = { "LookingForGroup" } },
+    { key = "yell",   kind = "type",    chatType = "YELL"  },
+    { key = "say",    kind = "type",    chatType = "SAY"   },
+    { key = "guild",  kind = "type",    chatType = "GUILD", requires = function() return IsInGuild and IsInGuild() end },
+}
+
+-- Rotation index is session-only (resets on reload).
+local channelRotationIdx = 1
+
 local Advert = {
     cachedMsg     = nil,
     dirty         = true,
     autoRepeat    = nil,    -- ticker handle
-    channelNum    = nil,
     -- Sentinel: must be far enough in the past that the very first Send()
     -- after login isn't rejected. GetTime() at login is small but positive,
     -- so plain 0 falsely reads as "sent <30s ago".
@@ -50,13 +64,27 @@ local function specsFragment()
     return table.concat(parts, ", ")
 end
 
-function Advert:_resolveChannel()
-    -- cache the channel number for "global" (Warmane uses /global). Fall back to "World".
-    local num = GetChannelName("global")
-    if (not num) or num == 0 then num = GetChannelName("World") end
-    if (not num) or num == 0 then num = GetChannelName("LookingForGroup") end
-    self.channelNum = (num and num > 0) and num or nil
-    return self.channelNum
+function Advert:_resolveActiveTargets()
+    local settings = WGB_Settings and WGB_Settings.advertChannels or { global = true }
+    local result = {}
+    for _, entry in ipairs(ADVERT_TARGETS) do
+        if settings[entry.key] then
+            if entry.kind == "channel" then
+                for _, name in ipairs(entry.names) do
+                    local num = GetChannelName(name)
+                    if num and num > 0 then
+                        table.insert(result, { kind = "CHANNEL", target = num, label = entry.key })
+                        break
+                    end
+                end
+            elseif entry.kind == "type" then
+                if (not entry.requires) or entry.requires() then
+                    table.insert(result, { kind = entry.chatType, target = nil, label = entry.key })
+                end
+            end
+        end
+    end
+    return result
 end
 
 function Advert:BuildMessage()
@@ -106,17 +134,21 @@ function Advert:Send()
         WGB.Print(("Cooldown: %ds"):format(math.ceil(wait)))
         return false
     end
-    -- Always re-resolve: the player may have joined /global after login.
-    -- If we already had a number, verify it still maps to the same channel.
-    self:_resolveChannel()
-    if not self.channelNum then
-        WGB.Print("|cFFFF0000No /global channel found.|r Type /join global first.")
+    local targets = self:_resolveActiveTargets()
+    if #targets == 0 then
+        WGB.Print("|cFFFF0000No advert targets active.|r Enable one in the Advertisement tab.")
         return false
     end
+    -- Rotate through the active targets so each send goes to the next one.
+    if channelRotationIdx > #targets then channelRotationIdx = 1 end
+    local t = targets[channelRotationIdx]
+    channelRotationIdx = channelRotationIdx % #targets + 1
+
     local msg = self:GetMessage()
     -- SendChatMessage hard-caps at 255 chars
     if #msg > 255 then msg = msg:sub(1, 255) end
-    WGB.QueueChat(msg, "CHANNEL", self.channelNum)
+    WGB.QueueChat(msg, t.kind, t.target)
+    WGB.Debug(("Advert sent via %s"):format(t.label))
     self.lastSendAt = now
     return true
 end

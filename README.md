@@ -54,10 +54,6 @@ All modules talk through `WGB.Events` only. No direct cross-module calls.
 - The `/global` channel must already be joined (`/join global`) before sending adverts.
 - BoE detection / PvP gear detection is heuristic (item-name pattern match for PvP, gem socket diff for missing gems).
 
-## Versioning
-
-Bump the version in both `WarmaneGroupBuilder.toc` and `Core/Core.lua` (`WGB.VERSION`) at the same time. They are checked against each other only by humans.
-
 ## License
 
 Use it, modify it, ship it.

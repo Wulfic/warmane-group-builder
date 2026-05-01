@@ -14,8 +14,10 @@ local function check(parent, label, x, y, onClick)
     return c
 end
 
+local dropdownCount = 0
 local function dropdown(parent, x, y, width, options, onPick)
-    local dd = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
+    dropdownCount = dropdownCount + 1
+    local dd = CreateFrame("Frame", "WGBLootDropdown" .. dropdownCount, parent, "UIDropDownMenuTemplate")
     dd:SetPoint("TOPLEFT", x - 16, y + 4)
     UIDropDownMenu_SetWidth(dd, width or 140)
     UIDropDownMenu_Initialize(dd, function()
@@ -146,13 +148,17 @@ local function build()
     w.clearBtn:SetPoint("TOPLEFT", 16, y); w.clearBtn:SetSize(120, 22)
     w.clearBtn:SetText("Clear Reserves")
     w.clearBtn:SetScript("OnClick", function() WGB.LootRules:ClearReservedItems() end)
+    y = y - 32
 
-    -- Preview
+    -- Preview (flows below the Clear Reserves button so the two never overlap)
     local prev = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    prev:SetPoint("BOTTOMLEFT", 8, 28); prev:SetText(L["LOOT_PREVIEW"] .. ":")
+    prev:SetPoint("TOPLEFT", 8, y); prev:SetText(L["LOOT_PREVIEW"] .. ":")
+    y = y - 22
 
     w.preview = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    w.preview:SetPoint("BOTTOMLEFT", 8, 8); w.preview:SetWidth(460); w.preview:SetJustifyH("LEFT")
+    w.preview:SetPoint("TOPLEFT", 8, y)
+    w.preview:SetWidth(540); w.preview:SetJustifyH("LEFT")
+    w.preview:SetNonSpaceWrap(true)
 end
 
 local function refresh()

@@ -73,9 +73,26 @@ local dispatch = {
         StaticPopup_Show("WGB_RESET_CONFIRM")
     end,
 
-    debug = function()
-        WGB_Settings.debug = not WGB_Settings.debug
-        WGB.Print("Debug: " .. (WGB_Settings.debug and "ON" or "OFF"))
+    debug = function(arg)
+        local sub = arg and arg:match("^%s*(%S+)") or ""
+        if sub == "dump" then
+            WGB.Print("=== WGB Debug Dump ===")
+            WGB.Print("Version: " .. WGB.VERSION)
+            WGB.Print("debug: "              .. tostring(WGB_Settings.debug))
+            WGB.Print("autoInviteEnabled: "  .. tostring(WGB_Settings.autoInviteEnabled))
+            WGB.Print("autoInviteKeyword: '" .. tostring(WGB_Settings.autoInviteKeyword) .. "'")
+            WGB.Print("autoRepeatEnabled: "  .. tostring(WGB_Settings.autoRepeatEnabled))
+            WGB.Print("autoRepeatInterval: " .. tostring(WGB_Settings.autoRepeatInterval) .. " min")
+            WGB.Print("defaultActivity: "    .. tostring(WGB_Settings.defaultActivity))
+            WGB.Print("showMinimap: "        .. tostring(WGB_Settings.showMinimap))
+            WGB.Print("whisperResponse: '"   .. tostring(WGB_Settings.whisperResponse) .. "'")
+            if WGB.Events and WGB.Events.ListEvents then
+                WGB.Events:ListEvents()
+            end
+        else
+            WGB_Settings.debug = not WGB_Settings.debug
+            WGB.Print("Debug: " .. (WGB_Settings.debug and "ON" or "OFF"))
+        end
     end,
 }
 

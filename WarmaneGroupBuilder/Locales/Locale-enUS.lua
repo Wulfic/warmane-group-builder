@@ -23,7 +23,7 @@ L["SLASH_HELP_KICK"]              = "/wgb kick <name> - kick player"
 L["SLASH_HELP_APPROVE"]           = "/wgb approve <name> - approve player"
 L["SLASH_HELP_CONFIG"]            = "/wgb config - open config panel"
 L["SLASH_HELP_RESET"]             = "/wgb reset - reset settings"
-L["SLASH_HELP_DEBUG"]             = "/wgb debug - toggle debug output"
+L["SLASH_HELP_DEBUG"]             = "/wgb debug - toggle debug output  |  /wgb debug dump - print current state"
 
 -- Roles
 L["ROLE_TANK"]                    = "Tank"
@@ -72,6 +72,16 @@ L["SEND_NOW"]                     = "Send Now"
 L["AUTO_REPEAT"]                  = "Auto-Repeat"
 L["INTERVAL_MIN"]                 = "Interval (min)"
 L["NEXT_SEND"]                    = "Next send in: %ds"
+
+-- Advertisement channels
+L["ADVERTISE_IN"]                 = "Advertise In:"
+L["CHAN_GLOBAL"]                  = "Global"
+L["CHAN_TRADE"]                   = "Trade"
+L["CHAN_LFG"]                     = "LFG"
+L["CHAN_YELL"]                    = "Yell"
+L["CHAN_SAY"]                     = "Say"
+L["CHAN_GUILD"]                   = "Guild"
+L["CHAN_ROTATE_HINT"]             = "When multiple channels are selected, each send rotates to the next."
 
 -- Group / Inspection
 L["GROUP_STATUS"]                 = "Group Status"

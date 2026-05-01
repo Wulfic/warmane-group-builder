@@ -16,13 +16,14 @@ WGB._ns          = ns
 local DEFAULT_SETTINGS = {
     version              = 1,
     debug                = false,
-    mainWindow           = { x = 0, y = 0, point = "CENTER", width = 520, height = 600, shown = false },
+    mainWindow           = { x = 0, y = 0, point = "CENTER", width = 580, height = 620, shown = false },
     minimapAngle         = 215,
     showMinimap          = true,
     autoInviteEnabled    = false,
     autoInviteKeyword    = "",     -- "" = any whisper triggers invite
     autoRepeatEnabled    = false,
     autoRepeatInterval   = 5,      -- minutes
+    advertChannels       = { global = true, trade = false, lfg = false, yell = false, say = false, guild = false },
     whisperResponse      = "Invite incoming. Please come to Dalaran for inspection. (auto-msg)",
     advertSuffix         = "PST for inv",
     defaultActivity      = "icc25",
@@ -58,7 +59,20 @@ end
 
 function WGB.Debug(msg)
     if not (WGB_Settings and WGB_Settings.debug) then return end
-    DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00[WGB-DBG]|r " .. tostring(msg))
+    local ts = date("%H:%M:%S")
+    DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00[WGB-DBG " .. ts .. "]|r " .. tostring(msg))
+end
+
+-- Convenience wrapper: WGB.DebugF("Player %s has GS %d", name, gs)
+function WGB.DebugF(fmt, ...)
+    if not (WGB_Settings and WGB_Settings.debug) then return end
+    WGB.Debug(fmt:format(...))
+end
+
+-- WGB.Warn: always printed (not gated by debug flag), for non-fatal issues.
+function WGB.Warn(msg)
+    local ts = date("%H:%M:%S")
+    DEFAULT_CHAT_FRAME:AddMessage("|cFFFF8000[WGB-WARN " .. ts .. "]|r " .. tostring(msg))
 end
 
 -- ----------------------------------------------------------------------------

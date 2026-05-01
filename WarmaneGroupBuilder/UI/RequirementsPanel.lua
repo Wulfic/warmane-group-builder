@@ -9,9 +9,10 @@ WGB.RequirementsPanel = Panel
 local frame
 local widgets = {}
 
-local function makeLabel(parent, text, x, y)
+local function makeLabel(parent, text, x, y, width)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     fs:SetPoint("TOPLEFT", x, y)
+    if width then fs:SetWidth(width); fs:SetJustifyH("LEFT") end
     fs:SetText(text)
     return fs
 end
@@ -82,8 +83,8 @@ local function build()
     widgets.mdps = makeEditNumber(frame, 240, rolesY - 24, 50,
         function(v) WGB.Requirements:SetRole("mdps", v) end)
 
-    makeLabel(frame, L["MIN_GS"], 8, -120)
-    widgets.gs = makeEditNumber(frame, 90, -116, 60,
+    makeLabel(frame, L["MIN_GS"] .. ":", 8, -120, 110)
+    widgets.gs = makeEditNumber(frame, 124, -116, 70,
         function(v) WGB.Requirements:SetMinGS(v) end)
 
     widgets.fullGems = makeCheck(frame, L["FULL_GEMS"], 8, -150,

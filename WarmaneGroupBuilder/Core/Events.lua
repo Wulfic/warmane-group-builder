@@ -50,6 +50,10 @@ function Events:Fire(event, ...)
         local ok, err = pcall(handlers[i], owners[i], ...)
         if not ok then
             WGB.Print("|cFFFF0000Event handler error|r [" .. event .. "]: " .. tostring(err))
+            if WGB_Settings and WGB_Settings.debug then
+                local stack = debugstack and debugstack() or "(no stack)"
+                DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00[WGB-DBG stack]|r " .. stack)
+            end
         end
     end
 end
@@ -61,4 +65,17 @@ function Events:CountListeners(event)
     local n = 0
     for _ in pairs(t) do n = n + 1 end
     return n
+end
+
+-- Prints every registered event and its listener count to chat.
+function Events:ListEvents()
+    local evts = {}
+    for ev in pairs(listeners) do
+        evts[#evts + 1] = ev
+    end
+    table.sort(evts)
+    WGB.Print("Registered events (" .. #evts .. "):")
+    for _, ev in ipairs(evts) do
+        WGB.Print("  " .. ev .. " (" .. Events:CountListeners(ev) .. " listeners)")
+    end
 end
