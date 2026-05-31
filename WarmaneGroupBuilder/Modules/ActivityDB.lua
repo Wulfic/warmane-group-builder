@@ -127,6 +127,25 @@ WGB.ActivityOrder = {
     "custom",
 }
 
+-- Boss progression per base zone (the 10 / 25 variants share a list). Used by
+-- the refill flow to tag the advert with the boss the group is currently on.
+WGB.ActivityBosses = {
+    icc = {
+        "Marrowgar", "Deathwhisper", "Gunship", "Saurfang",
+        "Festergut", "Rotface", "Putricide",
+        "Blood Princes", "Lana'thel", "Valithria", "Sindragosa", "Lich King",
+    },
+    toc = { "Beasts", "Jaraxxus", "Faction Champs", "Twin Val'kyr", "Anub'arak" },
+    ulduar = {
+        "Flame Leviathan", "Razorscale", "Ignis", "XT-002", "Assembly",
+        "Kologarn", "Auriaya", "Hodir", "Thorim", "Freya", "Mimiron",
+        "Vezax", "Yogg-Saron", "Algalon",
+    },
+    rs = { "Baltharus", "Saviana", "Zarithrian", "Halion" },
+    voa = { "Archavon", "Emalon", "Koralon", "Toravon" },
+    onyxia = { "Onyxia" },
+}
+
 -- ----------------------------------------------------------------------------
 -- Class / spec catalog (Wrath 3.3.5a). Used by the advanced raid-comp builder
 -- in the Requirements panel and by the advert's compact spec fragment.
@@ -174,6 +193,12 @@ end
 
 function WGB.GetActivity(id)
     return WGB.Activities[id]
+end
+
+-- Bosses for an activity id (10/25 variants resolve to the same base list).
+function WGB.GetBosses(id)
+    local base = id and id:gsub("%d+$", "") or ""
+    return WGB.ActivityBosses[base] or {}
 end
 
 function WGB.ListActivities()

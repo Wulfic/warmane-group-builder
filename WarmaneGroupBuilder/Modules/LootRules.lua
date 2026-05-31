@@ -137,7 +137,7 @@ function LootRules:GetMessageFragment()
     end
 
     -- BoE rule (the "reserve" case is folded into the reservation set above)
-    if self.boeRule == "raid"    then table.insert(parts, "BoEs to Raid")
+    if self.boeRule == "raid"    then table.insert(parts, "BoEs Free")
     elseif self.boeRule == "open"    then table.insert(parts, "Open Roll BoEs") end
 
     -- loot system (optional — leaders can hide it via the panel checkbox)

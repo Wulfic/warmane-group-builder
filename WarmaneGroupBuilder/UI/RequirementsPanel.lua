@@ -69,7 +69,18 @@ local function build()
     makeLabel(frame, L["ACTIVITY"] .. ":", 8, -8)
     widgets.activity = makeActivityDropdown(frame, 90, -4)
 
-    local rolesY = -50
+    -- Custom activity name input (visible only when "Custom" is selected).
+    widgets.customName = WGB.MakeInputBox(frame, 280, 22)
+    widgets.customName.border:SetPoint("TOPLEFT", 8, -38)
+    widgets.customName:SetMaxLetters(60)
+    widgets.customName:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    widgets.customName:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    widgets.customName:SetScript("OnEditFocusLost", function(self)
+        WGB.Requirements:SetCustomName(self:GetText())
+    end)
+    widgets.customName.border:Hide()
+
+    local rolesY = -80
     makeLabel(frame, L["ROLE_TANK"], 8, rolesY)
     widgets.tank = makeEditNumber(frame, 90, rolesY + 4, 50,
         function(v) WGB.Requirements:SetRole("tank", v) end)
@@ -86,26 +97,56 @@ local function build()
     widgets.mdps = makeEditNumber(frame, 240, rolesY - 24, 50,
         function(v) WGB.Requirements:SetRole("mdps", v) end)
 
-    makeLabel(frame, L["MIN_GS"] .. ":", 8, -120, 110)
-    widgets.gs = makeEditNumber(frame, 124, -116, 70,
+    makeLabel(frame, L["MIN_GS"] .. ":", 8, -150, 110)
+    widgets.gs = makeEditNumber(frame, 124, -146, 70,
         function(v) WGB.Requirements:SetMinGS(v) end)
+    widgets.gsDisable = makeCheck(frame, L["GS_DISABLE"], 204, -150,
+        function(v)
+            if v then
+                WGB.Requirements:SetMinGS(0)
+                widgets.gs:SetText("0")
+            end
+        end)
 
-    widgets.fullGems = makeCheck(frame, L["FULL_GEMS"], 8, -150,
+    widgets.fullGems = makeCheck(frame, L["FULL_GEMS"], 8, -180,
         function(v) WGB.Requirements:SetFlag("requireFullGems", v) end)
-    widgets.fullEnch = makeCheck(frame, L["FULL_ENCHANTS"], 8, -180,
+    widgets.fullEnch = makeCheck(frame, L["FULL_ENCHANTS"], 8, -210,
         function(v) WGB.Requirements:SetFlag("requireFullEnchants", v) end)
-    widgets.noPvP    = makeCheck(frame, L["NO_PVP_GEAR"], 8, -210,
+    widgets.noPvP    = makeCheck(frame, L["NO_PVP_GEAR"], 8, -240,
         function(v) WGB.Requirements:SetFlag("noPvPGear", v) end)
 
+    -- Refill flow (right column): advertise to backfill an in-progress group and
+    -- tag the boss it's currently on. Boss dropdown reads the live activity list.
+    widgets.refill = makeCheck(frame, L["REFILL_MODE"], 300, -150,
+        function(v) WGB.Requirements:SetRefillMode(v) end)
+
+    widgets.bossLabel = makeLabel(frame, L["BOSS"] .. ":", 300, -184)
+    widgets.bossDD = CreateFrame("Frame", "WGBBossDropdown", frame, "UIDropDownMenuTemplate")
+    widgets.bossDD:SetPoint("TOPLEFT", 300 - 16, -204 + 4)
+    UIDropDownMenu_SetWidth(widgets.bossDD, 150)
+    UIDropDownMenu_Initialize(widgets.bossDD, function()
+        for _, boss in ipairs(WGB.GetBosses(WGB.Requirements.activity)) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text  = boss
+            info.value = boss
+            info.func  = function()
+                WGB.Requirements:SetCurrentBoss(boss)
+                UIDropDownMenu_SetSelectedValue(widgets.bossDD, boss)
+                UIDropDownMenu_SetText(widgets.bossDD, boss)
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+
     -- Advanced raid-comp toggle + builder ------------------------------------
-    widgets.advanced = makeCheck(frame, L["ADVANCED_COMP"], 8, -244,
+    widgets.advanced = makeCheck(frame, L["ADVANCED_COMP"], 8, -274,
         function(v) WGB.Requirements:SetAdvancedComp(v) end)
 
     -- Everything below is only shown while Advanced is enabled.
     local adv = {}
     widgets.adv = adv
 
-    local compY = -276
+    local compY = -306
     adv.title = makeLabel(frame, L["SPEC_REQUIREMENTS"] .. ":", 8, compY)
 
     local rowY = compY - 26
@@ -194,15 +235,15 @@ local function build()
 
     pre.title = makeLabel(frame, L["COMP_PRESETS"] .. ":", 8, presY)
 
-    pre.name = WGB.MakeInputBox(frame, 150, 24)
+    pre.name = WGB.MakeInputBox(frame, 220, 24)
     pre.name.border:SetPoint("TOPLEFT", 8, presY - 24)
     pre.name:SetMaxLetters(40)
     pre.name:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     pre.name:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
     pre.saveBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    pre.saveBtn:SetPoint("TOPLEFT", pre.name.border, "TOPRIGHT", 6, 0)
-    pre.saveBtn:SetSize(60, 24)
+    pre.saveBtn:SetPoint("TOPLEFT", pre.name.border, "TOPRIGHT", 8, 0)
+    pre.saveBtn:SetSize(80, 24)
     pre.saveBtn:SetText(L["SAVE"])
     pre.saveBtn:SetScript("OnClick", function()
         local nm = pre.name:GetText()
@@ -216,9 +257,13 @@ local function build()
         end
     end)
 
+    -- Row 2: dropdown (interior width 190) + Load + Delete.
+    -- UIDropDownMenuTemplate adds ~28px for the arrow; we position the frame
+    -- at x-16 (standard offset) so the visible text area starts at x=8.
+    -- Visual right edge of the text area ≈ 8+190 = 198; buttons start at 206.
     pre.dd = CreateFrame("Frame", "WGBCompPresetDropdown", frame, "UIDropDownMenuTemplate")
     pre.dd:SetPoint("TOPLEFT", 8 - 16, presY - 52)
-    UIDropDownMenu_SetWidth(pre.dd, 150)
+    UIDropDownMenu_SetWidth(pre.dd, 190)
     UIDropDownMenu_Initialize(pre.dd, function()
         for _, nm in ipairs(WGB.Requirements:ListPresets()) do
             local info = UIDropDownMenu_CreateInfo()
@@ -234,8 +279,8 @@ local function build()
     end)
 
     pre.loadBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    pre.loadBtn:SetPoint("TOPLEFT", 152, presY - 48)
-    pre.loadBtn:SetSize(60, 24)
+    pre.loadBtn:SetPoint("TOPLEFT", 206, presY - 48)
+    pre.loadBtn:SetSize(80, 24)
     pre.loadBtn:SetText(L["LOAD"])
     pre.loadBtn:SetScript("OnClick", function()
         if pre.selected and WGB.Requirements:LoadPreset(pre.selected) then
@@ -244,8 +289,8 @@ local function build()
     end)
 
     pre.delBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    pre.delBtn:SetPoint("TOPLEFT", 216, presY - 48)
-    pre.delBtn:SetSize(60, 24)
+    pre.delBtn:SetPoint("TOPLEFT", pre.loadBtn, "TOPRIGHT", 6, 0)
+    pre.delBtn:SetSize(80, 24)
     pre.delBtn:SetText(L["DELETE"])
     pre.delBtn:SetScript("OnClick", function()
         if pre.selected and WGB.Requirements:DeletePreset(pre.selected) then
@@ -271,6 +316,12 @@ local function setAdvShown(shown)
     for _, row in ipairs(adv.rows) do
         if shown and row.specIndex then row:Show() else row:Hide() end
     end
+end
+
+local function setRefillShown(shown)
+    local fn = shown and "Show" or "Hide"
+    if widgets.bossLabel then widgets.bossLabel[fn](widgets.bossLabel) end
+    if widgets.bossDD then widgets.bossDD[fn](widgets.bossDD) end
 end
 
 local function refreshComp()
@@ -314,9 +365,24 @@ local function refresh()
     widgets.rdps:SetText(tostring(r.roles.rdps or 0))
     widgets.mdps:SetText(tostring(r.roles.mdps or 0))
     widgets.gs:SetText(tostring(r.minGS or 0))
+    widgets.gsDisable:SetChecked(r.minGS == 0)
+    local isCustom = (r.activity == "custom")
+    if isCustom then
+        widgets.customName.border:Show()
+        widgets.customName:SetText(r.customName or "")
+    else
+        widgets.customName.border:Hide()
+    end
     widgets.fullGems:SetChecked(r.requireFullGems)
     widgets.fullEnch:SetChecked(r.requireFullEnchants)
     widgets.noPvP:SetChecked(r.noPvPGear)
+    widgets.refill:SetChecked(r.refillMode)
+    setRefillShown(r.refillMode)
+    if r.currentBoss and r.currentBoss ~= "" then
+        UIDropDownMenu_SetText(widgets.bossDD, r.currentBoss)
+    else
+        UIDropDownMenu_SetText(widgets.bossDD, L["BOSS_PICK"])
+    end
     widgets.advanced:SetChecked(r.advancedComp)
     refreshComp()
     setAdvShown(r.advancedComp)

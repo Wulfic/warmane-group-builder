@@ -6,6 +6,9 @@ local WGB = _G.WGB
 
 local Requirements = {
     activity              = nil,    -- activity id
+    customName            = "",     -- used when activity == "custom"
+    refillMode            = false,  -- group already running; advertise to refill
+    currentBoss           = "",     -- boss the group is on (shown when refilling)
     roles                 = { tank = 0, heal = 0, rdps = 0, mdps = 0 },
     filled                = { tank = 0, heal = 0, rdps = 0, mdps = 0 },
     minGS                 = 0,
@@ -34,6 +37,7 @@ function Requirements:ApplyActivityDefaults(activityId)
         mdps = a.defaultRoles.mdps or 0,
     }
     self.minGS = a.defaultGS or 0
+    self.currentBoss = ""
     self.specRequirements = {}
     self.specFilled = {}
     fire()
@@ -80,6 +84,21 @@ function Requirements:SetAdvancedComp(value)
     fire()
 end
 
+function Requirements:SetCustomName(name)
+    self.customName = name or ""
+    fire()
+end
+
+function Requirements:SetRefillMode(value)
+    self.refillMode = value and true or false
+    fire()
+end
+
+function Requirements:SetCurrentBoss(name)
+    self.currentBoss = name or ""
+    fire()
+end
+
 -- ----------------------------------------------------------------------------
 -- Named raid-comp presets (saved across sessions in WGB_Settings.compPresets).
 -- A preset is a full snapshot of the requirement state so loading it recreates
@@ -103,6 +122,7 @@ function Requirements:SavePreset(name)
     end
     store[name] = {
         activity            = self.activity,
+        customName          = self.customName or "",
         roles               = { tank = self.roles.tank or 0, heal = self.roles.heal or 0,
                                  rdps = self.roles.rdps or 0, mdps = self.roles.mdps or 0 },
         minGS               = self.minGS or 0,
@@ -120,6 +140,7 @@ function Requirements:LoadPreset(name)
     local p = store and store[name] or nil
     if not p then return false end
     self.activity            = p.activity
+    self.customName          = p.customName or ""
     self.roles               = { tank = (p.roles and p.roles.tank) or 0,
                                  heal = (p.roles and p.roles.heal) or 0,
                                  rdps = (p.roles and p.roles.rdps) or 0,

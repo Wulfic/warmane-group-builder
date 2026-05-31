@@ -108,12 +108,18 @@ end
 function Advert:BuildMessage()
     local req = WGB.Requirements
     local activity = req and req.activity and WGB.GetActivity(req.activity) or nil
-    local actName = activity and activity.shortName or "Custom"
+    local actName = (activity and activity.id == "custom" and req.customName ~= "" and req.customName)
+                    or (activity and activity.shortName) or "Custom"
 
     -- Format (plain, no color codes — public chat strips them anyway):
     --   LFM ICC 25 - 5.8k GS+ - 2 Tanks/5 Heals/8 RDPS/9 MDPS - <specs> - <loot> - <suffix>
     local segs = {}
     table.insert(segs, "LFM " .. actName)
+
+    -- Refilling an in-progress group: tag the boss so applicants know the lockout.
+    if req and req.refillMode and req.currentBoss and req.currentBoss ~= "" then
+        table.insert(segs, L["ON_BOSS"]:format(req.currentBoss))
+    end
 
     if req and req.minGS and req.minGS > 0 then
         table.insert(segs, formatGS(req.minGS) .. " GS+")
