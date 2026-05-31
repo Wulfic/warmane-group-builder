@@ -9,7 +9,8 @@ local L = WGB.L
 
 local LootRules = {
     masterLoot       = false,
-    lootSystem       = "MSOS",        -- "MSOS" | "SK" | "Random" | "Custom"
+    lootSystem       = "MSOS",        -- "MSOS" | "SK" | "Random" | "Group" | "Custom"
+    advertiseLootSystem = true,       -- include the loot system (MS>OS etc.) in the advert
     boeRule          = "raid",        -- "raid" | "reserve" | "open"
     primoSaronite    = false,
     shadowfrostShard = false,
@@ -30,6 +31,7 @@ end
 local SETTABLE_KEYS = {
     masterLoot       = true,
     lootSystem       = true,
+    advertiseLootSystem = true,
     boeRule          = true,
     primoSaronite    = true,
     shadowfrostShard = true,
@@ -56,6 +58,25 @@ function LootRules:ApplyActivityPreset(activityId)
     self.yoggFragment     = a.lootPresets.yoggFragment     and true or false
     self.boeRule          = a.lootPresets.boeRule or self.boeRule
     fire()
+end
+
+-- Which commodity reserves make sense for which instance. Keyed by the
+-- alphabetic prefix of the activity id (icc25 -> "icc", ulduar10 -> "ulduar").
+-- Anything not listed (rs, voa, onyxia, custom) has no commodity reserves.
+local COMMODITY_BY_INSTANCE = {
+    icc    = { primoSaronite = true, shadowfrostShard = true },
+    toc    = { crusaderOrb = true },
+    ulduar = { runedOrb = true, yoggFragment = true },
+}
+
+-- Returns a set { [commodityKey] = true } of the commodities relevant to the
+-- currently selected activity. Used to gate both the advert fragment and which
+-- checkboxes the loot panel shows, so you can't accidentally advertise Crusader
+-- Orbs for an ICC raid.
+function LootRules:RelevantCommodities()
+    local activityId = WGB.Requirements and WGB.Requirements.activity
+    local key = activityId and activityId:match("^%a+") or nil
+    return (key and COMMODITY_BY_INSTANCE[key]) or {}
 end
 
 function LootRules:AddReservedItem(itemLink, reservedBy)
@@ -87,12 +108,26 @@ end
 function LootRules:GetMessageFragment()
     local parts = {}
 
-    -- commodity reservations
-    if self.primoSaronite    then table.insert(parts, "Primos Res") end
-    if self.shadowfrostShard then table.insert(parts, "Shadowfrost Res") end
-    if self.crusaderOrb      then table.insert(parts, "Crusader Orbs Res") end
-    if self.runedOrb         then table.insert(parts, "Runed Orbs Res") end
-    if self.yoggFragment     then table.insert(parts, "Val'anyr Frags Res") end
+    -- Reservation set: commodities relevant to the instance, plus BoE when its
+    -- rule is "reserve". When exactly one thing is reserved we spell it out
+    -- ("Primos Res"); with two or more we condense to abbreviations joined with
+    -- "+" and a single trailing "Res" ("P+B+SFS Res") to keep the advert short.
+    local rel = self:RelevantCommodities()
+    local reserves = {}
+    if self.primoSaronite    and rel.primoSaronite    then table.insert(reserves, { full = "Primos Res",         abbr = "P"     }) end
+    if self.boeRule == "reserve"                      then table.insert(reserves, { full = "BoEs Res",           abbr = "B"     }) end
+    if self.shadowfrostShard and rel.shadowfrostShard then table.insert(reserves, { full = "Shadowfrost Res",    abbr = "SFS"   }) end
+    if self.crusaderOrb      and rel.crusaderOrb      then table.insert(reserves, { full = "Crusader Orbs Res",  abbr = "Orb"   }) end
+    if self.runedOrb         and rel.runedOrb         then table.insert(reserves, { full = "Runed Orbs Res",     abbr = "RO"    }) end
+    if self.yoggFragment     and rel.yoggFragment     then table.insert(reserves, { full = "Val'anyr Frags Res", abbr = "Frags" }) end
+
+    if #reserves == 1 then
+        table.insert(parts, reserves[1].full)
+    elseif #reserves >= 2 then
+        local abbrs = {}
+        for _, r in ipairs(reserves) do table.insert(abbrs, r.abbr) end
+        table.insert(parts, table.concat(abbrs, "+") .. " Res")
+    end
 
     -- custom reserves
     if #self.reservedItems > 0 then
@@ -109,16 +144,18 @@ function LootRules:GetMessageFragment()
         table.insert(parts, "SR: " .. table.concat(names, ", "))
     end
 
-    -- BoE rule
+    -- BoE rule (the "reserve" case is folded into the reservation set above)
     if self.boeRule == "raid"    then table.insert(parts, "BoEs to Raid")
-    elseif self.boeRule == "reserve" then table.insert(parts, "BoEs Res")
     elseif self.boeRule == "open"    then table.insert(parts, "Open Roll BoEs") end
 
-    -- loot system
-    if     self.lootSystem == "MSOS"   then table.insert(parts, "MS>OS")
-    elseif self.lootSystem == "SK"     then table.insert(parts, "Suicide Kings")
-    elseif self.lootSystem == "Random" then table.insert(parts, "Random")
-    elseif self.lootSystem == "Custom" then table.insert(parts, "Custom Loot") end
+    -- loot system (optional — leaders can hide it via the panel checkbox)
+    if self.advertiseLootSystem then
+        if     self.lootSystem == "MSOS"   then table.insert(parts, "MS>OS")
+        elseif self.lootSystem == "SK"     then table.insert(parts, "Suicide Kings")
+        elseif self.lootSystem == "Random" then table.insert(parts, "Random")
+        elseif self.lootSystem == "Group"  then table.insert(parts, "Group Loot")
+        elseif self.lootSystem == "Custom" then table.insert(parts, "Custom Loot") end
+    end
 
     return table.concat(parts, " | ")
 end

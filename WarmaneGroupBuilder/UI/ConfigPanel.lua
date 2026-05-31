@@ -11,13 +11,34 @@ local w = {}
 local multiEditCount = 0
 local function multiEdit(parent, x, y, width, height, onCommit)
     multiEditCount = multiEditCount + 1
-    local sf = CreateFrame("ScrollFrame", "WGBConfigScrollFrame" .. multiEditCount, parent, "UIPanelScrollFrameTemplate")
-    sf:SetPoint("TOPLEFT", x, y); sf:SetSize(width, height)
+    -- Bordered container so the edit area + scrollbar read as one widget instead
+    -- of leaving the scroll arrows floating in empty space.
+    local box = CreateFrame("Frame", nil, parent)
+    box:SetPoint("TOPLEFT", x, y)
+    box:SetSize(width, height)
+    box:SetBackdrop({
+        bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    box:SetBackdropColor(0, 0, 0, 0.55)
+    box:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+
+    local sf = CreateFrame("ScrollFrame", "WGBConfigScrollFrame" .. multiEditCount, box, "UIPanelScrollFrameTemplate")
+    -- Leave room on the right for the template's scrollbar so it stays inside
+    -- the border rather than spilling past the edge of the box.
+    sf:SetPoint("TOPLEFT", 6, -6)
+    sf:SetPoint("BOTTOMRIGHT", -26, 6)
     local eb = CreateFrame("EditBox", nil, sf)
     eb:SetMultiLine(true); eb:SetFontObject(GameFontHighlight)
-    eb:SetWidth(width - 20); eb:SetAutoFocus(false)
+    eb:SetWidth(width - 36); eb:SetHeight(height * 4)
+    eb:SetAutoFocus(false)
     eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     eb:SetScript("OnEditFocusLost", function(self) onCommit(self:GetText() or "") end)
+    eb:SetScript("OnTextChanged", function(self)
+        self:GetParent():UpdateScrollChildRect()
+    end)
     sf:SetScrollChild(eb)
     return eb
 end
@@ -40,9 +61,9 @@ local function build()
 
     local kwLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     kwLbl:SetPoint("TOPLEFT", 8, -110); kwLbl:SetText(L["AUTO_INVITE_KEYWORD"] .. " (blank = any whisper):")
-    w.kw = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-    w.kw:SetPoint("TOPLEFT", 8, -132); w.kw:SetSize(260, 22)
-    w.kw:SetAutoFocus(false); w.kw:SetMaxLetters(40)
+    w.kw = WGB.MakeInputBox(frame, 260, 22)
+    w.kw.border:SetPoint("TOPLEFT", 8, -132)
+    w.kw:SetMaxLetters(40)
     w.kw:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     w.kw:SetScript("OnEditFocusLost", function(self) WGB_Settings.autoInviteKeyword = self:GetText() or "" end)
 
@@ -60,6 +81,7 @@ end
 local function refresh()
     if not frame then return end
     w.whisper:SetText(WGB_Settings.whisperResponse or "")
+    w.whisper:GetParent():SetVerticalScroll(0)
     w.kw:SetText(WGB_Settings.autoInviteKeyword or "")
     w.minimap:SetChecked(WGB_Settings.showMinimap)
 end

@@ -26,6 +26,19 @@ function WGB.ClassColor(class)
     return ("|cFF%02X%02X%02X"):format(c.r * 255, c.g * 255, c.b * 255)
 end
 
+-- Strip color escape sequences (|cAARRGGBB ... |r) from a string. On 3.3.5a the
+-- server REJECTS messages containing color codes when sent to public chat
+-- (SAY / YELL / numbered channels) — the message silently never appears. We
+-- build colored previews for the UI but must send plain text. Hyperlinks
+-- (|Hitem:...|h[..]|h) are preserved so item links still work.
+function WGB.StripColors(text)
+    if not text then return "" end
+    text = tostring(text)
+    text = text:gsub("|c%x%x%x%x%x%x%x%x", "")
+    text = text:gsub("|r", "")
+    return text
+end
+
 -- ----------------------------------------------------------------------------
 -- Throttle: WGB.Throttle("key", 1.0, function() ... end)
 -- Drops calls if the last call for `key` was within `interval` seconds.
@@ -202,4 +215,39 @@ function WGB.MakeCheckBox(parent, label, onClick)
     c.label = fs
     c:SetScript("OnClick", function(self) if onClick then onClick(self:GetChecked() and true or false) end end)
     return c
+end
+
+-- ----------------------------------------------------------------------------
+-- UI helper: a single-line edit box with a visible border.
+-- We deliberately DO NOT use InputBoxTemplate. On this 3.3.5a core the
+-- template's border textures live on the EditBox itself and (a) keep drawing
+-- under a hidden ancestor (bleeding the box onto other tabs) and (b) drop their
+-- Middle texture after a Hide/Show cycle so only the side caps render. Putting
+-- the border on a normal Frame (exactly like our multiline boxes) follows
+-- parent visibility correctly and always renders in full.
+-- Returns the EditBox; position eb.border (the bordered Frame), not the EditBox.
+-- ----------------------------------------------------------------------------
+function WGB.MakeInputBox(parent, width, height, numeric)
+    height = height or 22
+    local box = CreateFrame("Frame", nil, parent)
+    box:SetSize(width or 120, height)
+    box:SetBackdrop({
+        bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    box:SetBackdropColor(0, 0, 0, 0.6)
+    box:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+
+    local eb = CreateFrame("EditBox", nil, box)
+    eb:SetFontObject(GameFontHighlight)
+    eb:SetPoint("TOPLEFT", 5, -2)
+    eb:SetPoint("BOTTOMRIGHT", -5, 2)
+    eb:SetAutoFocus(false)
+    eb:EnableMouse(true)
+    if numeric then eb:SetNumeric(true) end
+    eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    eb.border = box
+    return eb
 end

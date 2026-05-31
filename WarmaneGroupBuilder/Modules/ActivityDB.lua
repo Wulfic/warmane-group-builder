@@ -127,6 +127,51 @@ WGB.ActivityOrder = {
     "custom",
 }
 
+-- ----------------------------------------------------------------------------
+-- Class / spec catalog (Wrath 3.3.5a). Used by the advanced raid-comp builder
+-- in the Requirements panel and by the advert's compact spec fragment.
+-- ----------------------------------------------------------------------------
+WGB.ClassSpecs = {
+    WARRIOR     = { "Arms", "Fury", "Protection" },
+    PALADIN     = { "Holy", "Protection", "Retribution" },
+    HUNTER      = { "Beast Mastery", "Marksmanship", "Survival" },
+    ROGUE       = { "Assassination", "Combat", "Subtlety" },
+    PRIEST      = { "Discipline", "Holy", "Shadow" },
+    DEATHKNIGHT = { "Blood", "Frost", "Unholy" },
+    SHAMAN      = { "Elemental", "Enhancement", "Restoration" },
+    MAGE        = { "Arcane", "Fire", "Frost" },
+    WARLOCK     = { "Affliction", "Demonology", "Destruction" },
+    DRUID       = { "Balance", "Feral", "Restoration" },
+}
+
+-- Dropdown order for the comp builder.
+WGB.ClassOrder = {
+    "DEATHKNIGHT", "DRUID", "HUNTER", "MAGE", "PALADIN",
+    "PRIEST", "ROGUE", "SHAMAN", "WARLOCK", "WARRIOR",
+}
+
+-- Compact class labels for the advert spec fragment ("1 Holy Pal/2 Resto Sham").
+local CLASS_SHORT = {
+    WARRIOR = "War", PALADIN = "Pal", HUNTER = "Hunt", ROGUE = "Rogue",
+    PRIEST = "Priest", DEATHKNIGHT = "DK", SHAMAN = "Sham", MAGE = "Mage",
+    WARLOCK = "Lock", DRUID = "Druid",
+}
+
+-- Human-readable class label for dropdowns (Title Case from the token).
+local CLASS_LABEL = {
+    WARRIOR = "Warrior", PALADIN = "Paladin", HUNTER = "Hunter", ROGUE = "Rogue",
+    PRIEST = "Priest", DEATHKNIGHT = "Death Knight", SHAMAN = "Shaman",
+    MAGE = "Mage", WARLOCK = "Warlock", DRUID = "Druid",
+}
+
+function WGB.ClassShort(class)
+    return CLASS_SHORT[class] or class or "?"
+end
+
+function WGB.ClassLabel(class)
+    return CLASS_LABEL[class] or class or "?"
+end
+
 function WGB.GetActivity(id)
     return WGB.Activities[id]
 end

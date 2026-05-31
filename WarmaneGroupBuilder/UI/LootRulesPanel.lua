@@ -40,18 +40,21 @@ local function build()
     frame = CreateFrame("Frame")
 
     -- Loot system + master loot
-    frame:CreateFontString(nil, "OVERLAY", "GameFontNormal"):SetPoint("TOPLEFT", 8, -8)
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", 8, -8); title:SetText(L["LOOT_SYSTEM"] .. ":")
     w.lootSystem = dropdown(frame, 100, -4, 140, {
         { label = L["LOOT_MSOS"],   value = "MSOS"   },
         { label = L["LOOT_SK"],     value = "SK"     },
         { label = L["LOOT_RANDOM"], value = "Random" },
+        { label = L["LOOT_GROUP"],  value = "Group"  },
         { label = L["LOOT_CUSTOM"], value = "Custom" },
     }, function(v) WGB.LootRules:Set("lootSystem", v) end)
 
     w.masterLoot = check(frame, L["LOOT_MASTER"], 260, -8,
         function(v) WGB.LootRules:Set("masterLoot", v) end)
+
+    w.advertiseSystem = check(frame, L["LOOT_ADVERTISE_SYSTEM"], 100, -28,
+        function(v) WGB.LootRules:Set("advertiseLootSystem", v) end)
 
     -- Commodities
     local y = -50
@@ -80,11 +83,8 @@ local function build()
     local crLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     crLbl:SetPoint("TOPLEFT", 8, y); crLbl:SetText(L["LOOT_CUSTOM_RESERVES"]); y = y - 22
 
-    w.crEdit = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-    w.crEdit:SetPoint("TOPLEFT", 16, y)
-    w.crEdit:SetSize(280, 20)
-    w.crEdit:SetAutoFocus(false)
-    w.crEdit:EnableMouse(true)
+    w.crEdit = WGB.MakeInputBox(frame, 280, 24)
+    w.crEdit.border:SetPoint("TOPLEFT", 16, y)
     w.crEdit:SetScript("OnReceiveDrag", function(self)
         local cursorType, _, link = GetCursorInfo()
         if cursorType == "item" and link then
@@ -100,7 +100,7 @@ local function build()
     end)
 
     w.crAdd = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    w.crAdd:SetPoint("TOPLEFT", w.crEdit, "TOPRIGHT", 6, 0)
+    w.crAdd:SetPoint("TOPLEFT", w.crEdit.border, "TOPRIGHT", 6, 0)
     w.crAdd:SetSize(60, 22); w.crAdd:SetText("Add")
     w.crAdd:SetScript("OnClick", function()
         local text = w.crEdit:GetText()
@@ -157,7 +157,7 @@ local function build()
 
     w.preview = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     w.preview:SetPoint("TOPLEFT", 8, y)
-    w.preview:SetWidth(540); w.preview:SetJustifyH("LEFT")
+    w.preview:SetWidth(500); w.preview:SetJustifyH("LEFT")
     w.preview:SetNonSpaceWrap(true)
 end
 
@@ -165,16 +165,46 @@ local function refresh()
     if not frame then return end
     local lr = WGB.LootRules
     UIDropDownMenu_SetSelectedValue(w.lootSystem, lr.lootSystem)
-    UIDropDownMenu_SetText(w.lootSystem, lr.lootSystem)
+    UIDropDownMenu_SetText(w.lootSystem, ({
+        MSOS   = L["LOOT_MSOS"],
+        SK     = L["LOOT_SK"],
+        Random = L["LOOT_RANDOM"],
+        Group  = L["LOOT_GROUP"],
+        Custom = L["LOOT_CUSTOM"],
+    })[lr.lootSystem] or lr.lootSystem)
     UIDropDownMenu_SetSelectedValue(w.boeRule, lr.boeRule)
     UIDropDownMenu_SetText(w.boeRule, ({ raid = L["LOOT_BOE_RAID"], reserve = L["LOOT_BOE_RES"], open = L["LOOT_BOE_OPEN"] })[lr.boeRule])
 
     w.masterLoot:SetChecked(lr.masterLoot)
+    w.advertiseSystem:SetChecked(lr.advertiseLootSystem)
     w.primo:SetChecked(lr.primoSaronite)
     w.shadow:SetChecked(lr.shadowfrostShard)
     w.crus:SetChecked(lr.crusaderOrb)
     w.runed:SetChecked(lr.runedOrb)
     w.valan:SetChecked(lr.yoggFragment)
+
+    -- Only show commodity reserves relevant to the selected instance, and
+    -- stack the visible ones from the top so there are no blank rows. This
+    -- prevents advertising e.g. Crusader Orbs for an ICC raid.
+    local rel = lr:RelevantCommodities()
+    local commodities = {
+        { box = w.primo,  key = "primoSaronite"    },
+        { box = w.shadow, key = "shadowfrostShard" },
+        { box = w.crus,   key = "crusaderOrb"      },
+        { box = w.runed,  key = "runedOrb"         },
+        { box = w.valan,  key = "yoggFragment"     },
+    }
+    local cy = -50
+    for _, c in ipairs(commodities) do
+        if rel[c.key] then
+            c.box:ClearAllPoints()
+            c.box:SetPoint("TOPLEFT", 8, cy)
+            c.box:Show()
+            cy = cy - 22
+        else
+            c.box:Hide()
+        end
+    end
 
     -- Reserve list
     local total = #lr.reservedItems
@@ -210,3 +240,6 @@ WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()
     refresh()
 end)
 WGB.Events:Register("LOOT_RULES_CHANGED", Panel, refresh)
+-- Activity changes don't fire LOOT_RULES_CHANGED on their own; re-run refresh so
+-- the relevant commodity checkboxes update when the selected instance changes.
+WGB.Events:Register("REQUIREMENTS_CHANGED", Panel, refresh)

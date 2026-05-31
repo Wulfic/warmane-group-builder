@@ -45,7 +45,9 @@ local ENCHANTABLE_SLOTS = {
     [12] = "Ring 2",
     [15] = "Cloak",
     [16] = "Main Hand",
-    [17] = "Off Hand",
+    -- Off Hand (17) intentionally excluded: shields/off-hand frills/held items
+    -- are usually NOT enchanted, so requiring it produced false "missing
+    -- enchant" warnings on otherwise fully-enchanted players.
     [18] = "Ranged",
 }
 
@@ -53,24 +55,18 @@ local ALL_INSPECT_SLOTS = {
     1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
 }
 
--- Hidden tooltip used to scrape enchant text.
-local scanTip = CreateFrame("GameTooltip", "WGBScanTooltip", nil, "GameTooltipTemplate")
-scanTip:SetOwner(WorldFrame, "ANCHOR_NONE")
-
-local function scanEnchant(unit, slot)
-    scanTip:ClearLines()
-    if not scanTip.SetInventoryItem then return false end
-    local hasItem = scanTip:SetInventoryItem(unit, slot)
-    if not hasItem then return false end
-    -- Tooltip line 2..n; "Enchanted: ..." indicates an enchant.
-    for i = 2, scanTip:NumLines() do
-        local line = _G["WGBScanTooltipTextLeft" .. i]
-        if line then
-            local text = line:GetText() or ""
-            if text:find("Enchanted:", 1, true) then return true end
-        end
-    end
-    return false
+-- Enchant detection from the item link, NOT a tooltip scan.
+-- On 3.3.5a the tooltip enchant line is a plain green stat line with NO
+-- "Enchanted:" prefix (that label is a retail-only feature), so scraping for
+-- that string matched nothing and reported every slot as un-enchanted. The
+-- reliable signal is the enchantId embedded in the item link:
+--   |Hitem:itemId:enchantId:gem1:gem2:gem3:gem4:suffix:unique:...|h
+-- A non-zero enchantId means the item is enchanted. This also works for
+-- inspected units since GetInventoryItemLink returns the enchant data for them.
+local function hasEnchant(itemLink)
+    if not itemLink then return false end
+    local enchantId = itemLink:match("|?H?item:%d+:(%d+):")
+    return enchantId ~= nil and enchantId ~= "0" and enchantId ~= ""
 end
 
 local function countSocketsAndGems(itemLink)
@@ -106,7 +102,11 @@ local function detectPvP(itemLink)
     return false
 end
 
-local function gatherResult(unit)
+local function gatherResult(unit, inspectFlag)
+    -- inspectFlag distinguishes "inspecting someone else" (true) from reading
+    -- our OWN character (false). Talent APIs need the right flag or they return
+    -- the wrong player's data / nothing.
+    if inspectFlag == nil then inspectFlag = true end
     local name = UnitName(unit) or "?"
     local _, class = UnitClass(unit)
     local result = {
@@ -137,8 +137,14 @@ local function gatherResult(unit)
             end
             if detectPvP(link) then result.pvpItemCount = result.pvpItemCount + 1 end
             if ENCHANTABLE_SLOTS[slot] then
-                if not scanEnchant(unit, slot) then
-                    table.insert(result.missingEnchants, ENCHANTABLE_SLOTS[slot])
+                -- The Ranged slot (18) only holds an enchantable weapon for
+                -- hunters (bow/gun/crossbow). For everyone else it's a relic
+                -- (idol/libram/totem/sigil) or thrown/wand that can't take an
+                -- enchant, so don't flag it as "missing".
+                if slot ~= 18 or class == "HUNTER" then
+                    if not hasEnchant(link) then
+                        table.insert(result.missingEnchants, ENCHANTABLE_SLOTS[slot])
+                    end
                 end
             end
         end
@@ -147,7 +153,7 @@ local function gatherResult(unit)
     -- Spec via talent tabs (inspect-mode signature; 2nd arg true)
     local maxPoints, primaryIdx = -1, 1
     for i = 1, 3 do
-        local tabName, icon, points = GetTalentTabInfo(i, true)
+        local tabName, icon, points = GetTalentTabInfo(i, inspectFlag)
         result.talentPoints[i] = points or 0
         if points and points > maxPoints then
             maxPoints = points
@@ -225,14 +231,49 @@ local function alreadyQueued(name)
     return false
 end
 
-function Inspection:Enqueue(unit)
+function Inspection:Enqueue(unit, force)
     if not unit or not UnitExists(unit) then return end
     local name = UnitName(unit)
     if not name then return end
     if name == UnitName("player") then return end -- no self-inspect
+    -- Inspect each player ONCE. If we already have a result for them this
+    -- session, don't fire another NotifyInspect — re-inspecting the whole raid
+    -- on every roster tick spams the server and causes the network lag the
+    -- leader sees during checks. Their result is cleared when they leave
+    -- (Inspection:Clear), so a rejoin is correctly re-inspected. Pass force=true
+    -- to deliberately re-check someone (e.g. a manual "re-inspect" action).
+    if not force and self.results[name] then return end
     if alreadyQueued(name) then return end
     table.insert(self.queue, { name = name })
     self:_kick()
+end
+
+-- You cannot NotifyInspect yourself, so the player's own row would otherwise
+-- show "Inspecting..." forever. Read our own gear/talents locally instead.
+-- Cheap and synchronous; safe to call on login and on every roster change.
+function Inspection:InspectSelf()
+    local name = UnitName("player")
+    if not name then return end
+    local ok, result = pcall(gatherResult, "player", false)
+    if not ok then
+        WGB.Debug("InspectSelf failed: " .. tostring(result))
+        return
+    end
+    self.results[name] = result
+    WGB.Events:Fire("INSPECTION_COMPLETE", name, result)
+
+    -- GetTalentTabInfo can read back 0/0/0 for the player right after login,
+    -- before the client has cached our own talents. When solo there's no roster
+    -- change to trigger a re-read, so our row would show "hybrid 0/0/0 — no
+    -- 51-pt tree" forever. Retry a few times until talents populate.
+    local pts = result.talentPoints or { 0, 0, 0 }
+    local sum = (pts[1] or 0) + (pts[2] or 0) + (pts[3] or 0)
+    if sum > 0 then
+        self._selfRetries = 0
+    elseif (self._selfRetries or 0) < 5 then
+        self._selfRetries = (self._selfRetries or 0) + 1
+        WGB.After(2.0, function() Inspection:InspectSelf() end)
+    end
 end
 
 function Inspection:Clear(playerName)
@@ -321,9 +362,20 @@ end
 
 -- INSPECT_READY: gather and continue
 local listener = CreateFrame("Frame")
-listener:RegisterEvent("INSPECT_READY")           -- modern name (may not exist 3.3.5a)
-listener:RegisterEvent("INSPECT_TALENT_READY")    -- 3.3.5a name
-listener:RegisterEvent("PLAYER_REGEN_ENABLED")    -- combat ended
+-- CRITICAL: on 3.3.5a `RegisterEvent` raises a Lua error for unknown event
+-- names (e.g. INSPECT_READY only exists on later clients). That error aborts
+-- the rest of THIS chunk — including the SetScript below — leaving the listener
+-- with no handler, so INSPECTION_COMPLETE never fires and every inspect appears
+-- to "hang forever". Guard each registration so an unsupported name on one
+-- client can't break the others.
+local function safeRegister(frame, event)
+    local ok = pcall(frame.RegisterEvent, frame, event)
+    if not ok then WGB.Debug("Inspection: event unsupported on this client: " .. event) end
+    return ok
+end
+safeRegister(listener, "INSPECT_READY")           -- retail / some cores
+safeRegister(listener, "INSPECT_TALENT_READY")    -- 3.3.5a name
+safeRegister(listener, "PLAYER_REGEN_ENABLED")    -- combat ended
 listener:SetScript("OnEvent", function(_, event, guid)
     if event == "PLAYER_REGEN_ENABLED" then
         -- Resume any stalled queue once combat drops.
@@ -352,14 +404,28 @@ listener:SetScript("OnEvent", function(_, event, guid)
         stopTimerIfIdle()
         return
     end
-    local result = gatherResult(unit)
+    -- Guard the gather: a single malformed item or missing API on a private
+    -- core must not throw and leave `pending` set (which would jam the whole
+    -- queue and make every following player inspect forever).
+    local ok, result = pcall(gatherResult, unit)
     ClearInspectPlayer()
-    Inspection.results[p.name] = result
     Inspection.pending = nil
-    WGB.Events:Fire("INSPECTION_COMPLETE", p.name, result)
+    if ok then
+        Inspection.results[p.name] = result
+        WGB.Events:Fire("INSPECTION_COMPLETE", p.name, result)
+    else
+        WGB.Warn(("Inspect gather failed for %s: %s"):format(tostring(p.name), tostring(result)))
+        WGB.Events:Fire("INSPECTION_TIMEOUT", p.name)
+    end
     if #Inspection.queue > 0 then
         Inspection:_pump()
     else
         stopTimerIfIdle()
     end
+end)
+
+-- Populate our own row as soon as we log in (and again whenever gear changes
+-- via roster updates, handled in GroupManager).
+WGB.Events:Register("WGB_PLAYER_LOGIN", Inspection, function()
+    Inspection:InspectSelf()
 end)

@@ -13,6 +13,11 @@ local MainWindow = {
 }
 WGB.MainWindow = MainWindow
 
+-- Forward declaration so buildFrame's OnHide closure can capture the real
+-- local (it's defined further down). Without this, the reference would bind to
+-- a nil global instead of the local function.
+local clearEditFocus
+
 local function buildFrame()
     local f = CreateFrame("Frame", "WGBMainFrame", UIParent)
     f:SetBackdrop({
@@ -56,6 +61,16 @@ local function buildFrame()
     f.content = content
 
     tinsert(UISpecialFrames, "WGBMainFrame")
+
+    -- Closing the window (X button, Escape via UISpecialFrames, or Toggle) does
+    -- NOT route through OpenTab, so a still-focused EditBox would keep drawing
+    -- its caret over the world. Drop focus on every tab when the frame hides.
+    f:SetScript("OnHide", function()
+        for _, t in ipairs(MainWindow.tabs) do
+            pcall(clearEditFocus, t.frame)
+        end
+    end)
+
     return f
 end
 
@@ -71,6 +86,32 @@ local function relayoutTabs()
         end
         prev = b
     end
+end
+
+-- A focused EditBox keeps rendering its cursor/text even after its parent is
+-- hidden, so it "bleeds through" onto the next tab. On this 3.3.5a core even an
+-- UNfocused InputBoxTemplate box can keep drawing its border under a hidden
+-- ancestor (this is what made the loot "custom reserves" box show on every tab).
+-- Walk a panel's descendants and both drop focus AND explicitly hide every
+-- EditBox when the tab hides; re-show them when the tab opens. Every EditBox in
+-- our panels is always-visible on its own tab, so blanket show/hide is safe.
+local function setEditBoxesShown(frame, shown)
+    if not frame or not frame.GetChildren then return end
+    local kids = { frame:GetChildren() }
+    for _, child in ipairs(kids) do
+        if child.GetObjectType and child:GetObjectType() == "EditBox" then
+            if shown then
+                if child.Show then child:Show() end
+            else
+                if child.ClearFocus then child:ClearFocus() end
+                if child.Hide then child:Hide() end
+            end
+        end
+        setEditBoxesShown(child, shown)
+    end
+end
+clearEditFocus = function(frame)
+    setEditBoxesShown(frame, false)
 end
 
 function MainWindow:RegisterTab(id, label, frame)
@@ -97,8 +138,16 @@ function MainWindow:OpenTab(id)
     if not self.frame then return end
     local tab = self.tabById[id]
     if not tab then return end
-    for _, t in ipairs(self.tabs) do t.frame:Hide() end
+    for _, t in ipairs(self.tabs) do
+        pcall(clearEditFocus, t.frame)
+        t.frame:Hide()
+        t.button:UnlockHighlight()
+        t.button:SetNormalFontObject(GameFontNormal)
+    end
     tab.frame:Show()
+    setEditBoxesShown(tab.frame, true)
+    tab.button:LockHighlight()
+    tab.button:SetNormalFontObject(GameFontHighlight)
     self.current = id
     self.frame:Show()
 end

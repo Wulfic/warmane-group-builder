@@ -12,7 +12,10 @@ local Requirements = {
     requireFullGems       = false,
     requireFullEnchants   = false,
     noPvPGear             = false,
+    advancedComp          = false,   -- show the class/spec comp builder + advertise specs
+    compThreshold         = 0.5,     -- start advertising specific specs once >= this fraction filled
     specRequirements      = {},     -- { {class="PALADIN", spec="Holy", count=1}, ... }
+    specFilled            = {},     -- ["CLASS|Spec"] = count currently in the raid
 }
 WGB.Requirements = Requirements
 
@@ -32,6 +35,7 @@ function Requirements:ApplyActivityDefaults(activityId)
     }
     self.minGS = a.defaultGS or 0
     self.specRequirements = {}
+    self.specFilled = {}
     fire()
 end
 
@@ -69,6 +73,41 @@ end
 function Requirements:RemoveSpecRequirement(index)
     table.remove(self.specRequirements, index)
     fire()
+end
+
+function Requirements:SetAdvancedComp(value)
+    self.advancedComp = value and true or false
+    fire()
+end
+
+-- GroupManager calls this each recount with a { ["CLASS|Spec"] = count } map.
+-- Stored silently: the ROLE_FILLED fire from the same recount already dirties
+-- the advert, which then reads this fresh map when it rebuilds.
+function Requirements:SetSpecFilled(map)
+    self.specFilled = map or {}
+end
+
+-- Remaining specific class/spec needs, e.g. { {class="PALADIN", spec="Holy", count=1} }.
+function Requirements:GetRemainingSpecs()
+    local out = {}
+    for _, sr in ipairs(self.specRequirements) do
+        local key  = (sr.class or "") .. "|" .. (sr.spec or "")
+        local have = self.specFilled[key] or 0
+        local want = sr.count or 1
+        if want > have then
+            table.insert(out, { class = sr.class, spec = sr.spec, count = want - have })
+        end
+    end
+    return out
+end
+
+-- True once the raid is filled enough that broad role advertising should give
+-- way to advertising the exact remaining class/spec slots.
+function Requirements:ShouldAdvertiseComp()
+    if not self.advancedComp or #self.specRequirements == 0 then return false end
+    local total = self:GetTotalSlots()
+    if total <= 0 then return false end
+    return (self:GetTotalFilled() / total) >= (self.compThreshold or 0.5)
 end
 
 function Requirements:SetFilled(role, count)

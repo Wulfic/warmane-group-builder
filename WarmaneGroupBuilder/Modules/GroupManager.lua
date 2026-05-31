@@ -85,13 +85,21 @@ end
 
 function GroupManager:RecountFilled()
     local counts = { tank = 0, heal = 0, rdps = 0, mdps = 0 }
+    local specCounts = {}   -- ["CLASS|Spec"] = n, for the advanced comp builder
     for unit, name in WGB.IterateGroup() do
         local result = WGB.Inspection and WGB.Inspection.results[name] or nil
         local _, class = UnitClass(unit)
         local role = inferRole(class, result)
         counts[role] = (counts[role] or 0) + 1
+        -- Only tally a class/spec slot once we actually know the spec.
+        local spec = result and result.spec or nil
+        if class and spec then
+            local key = class .. "|" .. spec
+            specCounts[key] = (specCounts[key] or 0) + 1
+        end
     end
     if WGB.Requirements then
+        WGB.Requirements:SetSpecFilled(specCounts)
         for role, n in pairs(counts) do WGB.Requirements:SetFilled(role, n) end
     end
     if WGB.Requirements and WGB.Requirements:IsFull() then
@@ -118,6 +126,12 @@ function GroupManager:OnRosterChange()
         end
     end
     self.knownMembers = snap
+
+    -- Refresh our own gear/talents each roster change (we can't NotifyInspect
+    -- ourselves, so this is the only way our row gets real data).
+    if WGB.Inspection and WGB.Inspection.InspectSelf then
+        WGB.Inspection:InspectSelf()
+    end
 
     self:RecountFilled()
 
@@ -172,10 +186,18 @@ function GroupManager:_drainKicksAfterCombat()
 end
 
 local watcher = CreateFrame("Frame")
-watcher:RegisterEvent("PARTY_MEMBERS_CHANGED")
-watcher:RegisterEvent("RAID_ROSTER_UPDATE")
-watcher:RegisterEvent("GROUP_ROSTER_UPDATE")     -- modern alias; harmless if unused
-watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+-- 3.3.5a raises a Lua error when registering an unknown event. GROUP_ROSTER_UPDATE
+-- only exists on later clients / some cores; registering it directly would abort
+-- this chunk and the SetScript below would never run, so roster changes (and
+-- therefore inspection enqueue) would silently never fire. Guard each one.
+local function safeRegister(event)
+    local ok = pcall(watcher.RegisterEvent, watcher, event)
+    if not ok then WGB.Debug("GroupManager: event unsupported on this client: " .. event) end
+end
+safeRegister("PARTY_MEMBERS_CHANGED")
+safeRegister("RAID_ROSTER_UPDATE")
+safeRegister("GROUP_ROSTER_UPDATE")     -- modern alias; harmless if unsupported
+safeRegister("PLAYER_REGEN_ENABLED")
 watcher:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_ENABLED" then
         GroupManager:_drainKicksAfterCombat()

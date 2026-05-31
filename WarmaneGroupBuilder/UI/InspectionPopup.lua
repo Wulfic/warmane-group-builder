@@ -44,9 +44,10 @@ local function build()
     f.enchants = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     f.enchants:SetPoint("TOPLEFT", 16, -100)
     f.enchants:SetWidth(330); f.enchants:SetJustifyH("LEFT")
+    f.enchants:SetNonSpaceWrap(true)
 
     f.pvp = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    f.pvp:SetPoint("TOPLEFT", 16, -140)
+    f.pvp:SetPoint("TOPLEFT", 16, -154)
 
     -- Buttons
     local approve = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -135,9 +136,12 @@ function Popup:_advance()
 end
 
 WGB.Events:Register("INSPECTION_COMPLETE", Popup, function(_, name, result)
-    if Popup.frame and Popup.frame:IsShown() then
-        table.insert(Popup.queue, { name = name, result = result })
-    else
+    -- Do NOT auto-open on every inspect. During a 25-man fill that would throw a
+    -- popup over the main window for every single player. The leader opens the
+    -- popup on demand by clicking a row in the Group Status tab. We only refresh
+    -- in place when the player whose popup is already open gets updated data
+    -- (e.g. a deferred GearScore arriving after the popup was opened).
+    if Popup.frame and Popup.frame:IsShown() and Popup.current and Popup.current.name == name then
         Popup:Show(name, result)
     end
 end)
