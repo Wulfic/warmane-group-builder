@@ -80,6 +80,87 @@ function Requirements:SetAdvancedComp(value)
     fire()
 end
 
+-- ----------------------------------------------------------------------------
+-- Named raid-comp presets (saved across sessions in WGB_Settings.compPresets).
+-- A preset is a full snapshot of the requirement state so loading it recreates
+-- the activity, role counts, GS floor, gear flags and the advanced class/spec
+-- list exactly. `filled`/`specFilled` are live roster data and are NOT saved.
+-- ----------------------------------------------------------------------------
+local function presetStore()
+    if not WGB_Settings then return nil end
+    WGB_Settings.compPresets = WGB_Settings.compPresets or {}
+    return WGB_Settings.compPresets
+end
+
+function Requirements:SavePreset(name)
+    name = name and name:match("^%s*(.-)%s*$") or ""
+    if name == "" then return false end
+    local store = presetStore()
+    if not store then return false end
+    local specs = {}
+    for _, sr in ipairs(self.specRequirements) do
+        table.insert(specs, { class = sr.class, spec = sr.spec, count = sr.count or 1 })
+    end
+    store[name] = {
+        activity            = self.activity,
+        roles               = { tank = self.roles.tank or 0, heal = self.roles.heal or 0,
+                                 rdps = self.roles.rdps or 0, mdps = self.roles.mdps or 0 },
+        minGS               = self.minGS or 0,
+        requireFullGems     = self.requireFullGems and true or false,
+        requireFullEnchants = self.requireFullEnchants and true or false,
+        noPvPGear           = self.noPvPGear and true or false,
+        advancedComp        = self.advancedComp and true or false,
+        specRequirements    = specs,
+    }
+    return true
+end
+
+function Requirements:LoadPreset(name)
+    local store = presetStore()
+    local p = store and store[name] or nil
+    if not p then return false end
+    self.activity            = p.activity
+    self.roles               = { tank = (p.roles and p.roles.tank) or 0,
+                                 heal = (p.roles and p.roles.heal) or 0,
+                                 rdps = (p.roles and p.roles.rdps) or 0,
+                                 mdps = (p.roles and p.roles.mdps) or 0 }
+    self.minGS               = p.minGS or 0
+    self.requireFullGems     = p.requireFullGems and true or false
+    self.requireFullEnchants = p.requireFullEnchants and true or false
+    self.noPvPGear           = p.noPvPGear and true or false
+    self.advancedComp        = p.advancedComp and true or false
+    self.specRequirements    = {}
+    for _, sr in ipairs(p.specRequirements or {}) do
+        table.insert(self.specRequirements, { class = sr.class, spec = sr.spec, count = sr.count or 1 })
+    end
+    self.specFilled = {}
+    -- Loading a comp also realigns the loot preset to the new activity.
+    if self.activity and WGB.LootRules and WGB.LootRules.ApplyActivityPreset then
+        WGB.LootRules:ApplyActivityPreset(self.activity)
+    end
+    fire()
+    return true
+end
+
+function Requirements:DeletePreset(name)
+    local store = presetStore()
+    if store and store[name] then
+        store[name] = nil
+        return true
+    end
+    return false
+end
+
+function Requirements:ListPresets()
+    local store = presetStore()
+    local out = {}
+    if store then
+        for name in pairs(store) do table.insert(out, name) end
+        table.sort(out)
+    end
+    return out
+end
+
 -- GroupManager calls this each recount with a { ["CLASS|Spec"] = count } map.
 -- Stored silently: the ROLE_FILLED fire from the same recount already dirties
 -- the advert, which then reads this fresh map when it rebuilds.

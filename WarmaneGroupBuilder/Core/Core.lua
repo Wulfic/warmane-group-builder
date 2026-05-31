@@ -31,6 +31,7 @@ local DEFAULT_SETTINGS = {
         lootSystem = "MSOS",
         boeRule    = "raid",
     },
+    compPresets          = {},     -- [presetName] = saved raid-comp config snapshot
 }
 
 local DEFAULT_CHAR = {

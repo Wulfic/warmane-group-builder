@@ -121,27 +121,19 @@ function LootRules:GetMessageFragment()
     if self.runedOrb         and rel.runedOrb         then table.insert(reserves, { full = "Runed Orbs Res",     abbr = "RO"    }) end
     if self.yoggFragment     and rel.yoggFragment     then table.insert(reserves, { full = "Val'anyr Frags Res", abbr = "Frags" }) end
 
+    -- Custom reserved items fold into the SAME reservation set. Their item name
+    -- is used verbatim as the abbreviation so they read inline with the
+    -- commodities (e.g. "B+P+SFS+DBW Res") instead of a separate "SR:" segment.
+    for _, item in ipairs(self.reservedItems) do
+        table.insert(reserves, { full = (item.itemName or "?") .. " Res", abbr = item.itemName or "?" })
+    end
+
     if #reserves == 1 then
         table.insert(parts, reserves[1].full)
     elseif #reserves >= 2 then
         local abbrs = {}
         for _, r in ipairs(reserves) do table.insert(abbrs, r.abbr) end
         table.insert(parts, table.concat(abbrs, "+") .. " Res")
-    end
-
-    -- custom reserves
-    if #self.reservedItems > 0 then
-        local SHOW = 4
-        local total = #self.reservedItems
-        local shown = math.min(SHOW, total)
-        local names = {}
-        for i = 1, shown do
-            table.insert(names, self.reservedItems[i].itemName)
-        end
-        if total > shown then
-            table.insert(names, ("+%d more"):format(total - shown))
-        end
-        table.insert(parts, "SR: " .. table.concat(names, ", "))
     end
 
     -- BoE rule (the "reserve" case is folded into the reservation set above)

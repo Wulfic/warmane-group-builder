@@ -187,6 +187,74 @@ local function build()
     adv.empty:SetPoint("TOPLEFT", 16, listY)
     adv.empty:SetText(L["COMP_LIST_EMPTY"])
 
+    -- Saved comp presets (always visible — loading one can also flip Advanced on).
+    local pre = {}
+    widgets.presets = pre
+    local presY = listY - (MAX_COMP_ROWS + 1) * 16
+
+    pre.title = makeLabel(frame, L["COMP_PRESETS"] .. ":", 8, presY)
+
+    pre.name = WGB.MakeInputBox(frame, 150, 24)
+    pre.name.border:SetPoint("TOPLEFT", 8, presY - 24)
+    pre.name:SetMaxLetters(40)
+    pre.name:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    pre.name:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+    pre.saveBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    pre.saveBtn:SetPoint("TOPLEFT", pre.name.border, "TOPRIGHT", 6, 0)
+    pre.saveBtn:SetSize(60, 24)
+    pre.saveBtn:SetText(L["SAVE"])
+    pre.saveBtn:SetScript("OnClick", function()
+        local nm = pre.name:GetText()
+        if nm and nm:match("%S") then
+            if WGB.Requirements:SavePreset(nm) then
+                WGB.Print(L["COMP_SAVED"]:format(nm:match("^%s*(.-)%s*$")))
+                pre.name:SetText("")
+                pre.selected = nm:match("^%s*(.-)%s*$")
+                refresh()
+            end
+        end
+    end)
+
+    pre.dd = CreateFrame("Frame", "WGBCompPresetDropdown", frame, "UIDropDownMenuTemplate")
+    pre.dd:SetPoint("TOPLEFT", 8 - 16, presY - 52)
+    UIDropDownMenu_SetWidth(pre.dd, 150)
+    UIDropDownMenu_Initialize(pre.dd, function()
+        for _, nm in ipairs(WGB.Requirements:ListPresets()) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text  = nm
+            info.value = nm
+            info.func  = function()
+                pre.selected = nm
+                UIDropDownMenu_SetSelectedValue(pre.dd, nm)
+                UIDropDownMenu_SetText(pre.dd, nm)
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+
+    pre.loadBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    pre.loadBtn:SetPoint("TOPLEFT", 152, presY - 48)
+    pre.loadBtn:SetSize(60, 24)
+    pre.loadBtn:SetText(L["LOAD"])
+    pre.loadBtn:SetScript("OnClick", function()
+        if pre.selected and WGB.Requirements:LoadPreset(pre.selected) then
+            WGB.Print(L["COMP_LOADED"]:format(pre.selected))
+        end
+    end)
+
+    pre.delBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    pre.delBtn:SetPoint("TOPLEFT", 216, presY - 48)
+    pre.delBtn:SetSize(60, 24)
+    pre.delBtn:SetText(L["DELETE"])
+    pre.delBtn:SetScript("OnClick", function()
+        if pre.selected and WGB.Requirements:DeletePreset(pre.selected) then
+            WGB.Print(L["COMP_DELETED"]:format(pre.selected))
+            pre.selected = nil
+            refresh()
+        end
+    end)
+
     return frame
 end
 
@@ -252,6 +320,19 @@ local function refresh()
     widgets.advanced:SetChecked(r.advancedComp)
     refreshComp()
     setAdvShown(r.advancedComp)
+
+    local pre = widgets.presets
+    if pre then
+        -- Drop a stale selection if the preset was deleted elsewhere.
+        if pre.selected then
+            local exists = false
+            for _, nm in ipairs(WGB.Requirements:ListPresets()) do
+                if nm == pre.selected then exists = true; break end
+            end
+            if not exists then pre.selected = nil end
+        end
+        UIDropDownMenu_SetText(pre.dd, pre.selected or L["COMP_PICK_PROMPT"])
+    end
 end
 
 WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()
