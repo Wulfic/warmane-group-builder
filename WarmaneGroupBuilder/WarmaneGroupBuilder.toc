@@ -26,6 +26,7 @@ Modules\RaidAchievements.lua
 Modules\Advertisement.lua
 Modules\AutoInvite.lua
 Modules\GroupManager.lua
+Modules\MSTracker.lua
 
 # UI
 UI\MainWindow.lua
@@ -34,6 +35,7 @@ UI\LootRulesPanel.lua
 UI\AdvertPanel.lua
 UI\InspectionPopup.lua
 UI\GroupStatusPanel.lua
+UI\MSTrackerPanel.lua
 UI\ConfigPanel.lua
 UI\AboutPanel.lua
 UI\MinimapButton.lua

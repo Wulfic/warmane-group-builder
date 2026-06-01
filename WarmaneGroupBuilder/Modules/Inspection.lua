@@ -87,39 +87,47 @@ local function hasEnchant(itemLink)
     return enchantId ~= nil and enchantId ~= "0" and enchantId ~= ""
 end
 
--- Count UNFILLED sockets on an item via a hidden scanning tooltip.
--- The previous approach (GetItemStats EMPTY_SOCKET total minus GetItemGem count)
--- mis-read inspected players badly: GetItemGem returns nil for an inspected
--- unit's gems whenever the gem item isn't in the local cache, so every socketed
--- slot looked empty -> a fully-gemmed paladin reported ~17 "missing gems".
--- An inspected unit's item link DOES carry its socketed gem IDs, so a tooltip
--- built from that link renders the real gem stat lines for filled sockets and a
--- plain EMPTY_SOCKET_* line ONLY for sockets that are actually empty. Counting
--- those lines is class-agnostic and cache-independent.
-local gemScanTip
-local EMPTY_SOCKET_STRINGS = {
-    EMPTY_SOCKET_RED, EMPTY_SOCKET_YELLOW, EMPTY_SOCKET_BLUE,
-    EMPTY_SOCKET_META, EMPTY_SOCKET_PRISMATIC,
-}
+-- Count UNFILLED sockets on an item WITHOUT depending on the client item cache.
+--
+-- Two earlier approaches both broke on inspected players because they needed the
+-- player's *gem* items to be cached locally:
+--   1. GetItemStats total minus GetItemGem count: GetItemGem returns nil for an
+--      inspected unit's gems when the gem item isn't cached, so every socket
+--      looked empty -> a fully-gemmed paladin reported ~17 "missing gems".
+--   2. A scanning tooltip via SetHyperlink: this was claimed to be cache-
+--      independent but is NOT. When the inspected player's gem items aren't in
+--      your local cache the tooltip renders their FILLED sockets as
+--      EMPTY_SOCKET_* lines (over-count), and when the item's BASE info isn't
+--      cached it renders nothing (0 -> a false "pass"). That cache roulette is
+--      why some players still mis-read while others slipped through clean.
+--
+-- The item link itself encodes the socketed gem item IDs for both the local
+-- player AND inspected units, and reading a string never touches the cache:
+--   |Hitem:itemId:enchantId:gem1:gem2:gem3:gem4:suffix:unique:level:...|h
+-- gem1..gem4 are the gem item IDs in each socket (gem4 is the extra slot from a
+-- belt buckle / Blacksmithing socket); 0 means empty. We compare the number of
+-- filled gem IDs against the item's total socket count.
 local function countMissingGems(itemLink)
     if not itemLink then return 0 end
-    if not gemScanTip then
-        gemScanTip = CreateFrame("GameTooltip", "WGBGemScanTooltip", nil, "GameTooltipTemplate")
-        gemScanTip:SetOwner(WorldFrame, "ANCHOR_NONE")
+    -- Total sockets on the base item. GetItemStats only needs the item's BASE
+    -- info, which is present whenever the slot link itself resolved; if it isn't
+    -- cached yet we report 0 rather than risk a false "missing gem" flag.
+    local stats = GetItemStats(itemLink)
+    if not stats then return 0 end
+    local total = (stats.EMPTY_SOCKET_RED or 0)
+        + (stats.EMPTY_SOCKET_YELLOW or 0)
+        + (stats.EMPTY_SOCKET_BLUE or 0)
+        + (stats.EMPTY_SOCKET_META or 0)
+        + (stats.EMPTY_SOCKET_PRISMATIC or 0)
+    if total == 0 then return 0 end
+    -- Gems actually socketed, read straight from the link (cache-independent).
+    local g1, g2, g3, g4 = itemLink:match("|?H?item:%-?%d+:%-?%d+:(%-?%d+):(%-?%d+):(%-?%d+):(%-?%d+):")
+    local filled = 0
+    for _, g in ipairs({ g1, g2, g3, g4 }) do
+        if g and g ~= "0" and g ~= "" then filled = filled + 1 end
     end
-    gemScanTip:ClearLines()
-    local ok = pcall(gemScanTip.SetHyperlink, gemScanTip, itemLink)
-    if not ok then return 0 end
-    local missing = 0
-    for i = 1, gemScanTip:NumLines() do
-        local fs = _G["WGBGemScanTooltipTextLeft" .. i]
-        local text = fs and fs:GetText()
-        if text then
-            for _, s in ipairs(EMPTY_SOCKET_STRINGS) do
-                if s and text == s then missing = missing + 1; break end
-            end
-        end
-    end
+    local missing = total - filled
+    if missing < 0 then missing = 0 end -- buckle/BS extra socket can exceed base count
     return missing
 end
 
