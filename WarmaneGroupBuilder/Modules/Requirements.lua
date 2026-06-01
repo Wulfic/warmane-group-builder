@@ -15,6 +15,7 @@ local Requirements = {
     requireFullGems       = false,
     requireFullEnchants   = false,
     noPvPGear             = false,
+    flagOffSpecGear       = true,    -- warn when a player wears gear for another role
     advancedComp          = false,   -- show the class/spec comp builder + advertise specs
     compThreshold         = 0.5,     -- start advertising specific specs once >= this fraction filled
     specRequirements      = {},     -- { {class="PALADIN", spec="Holy", count=1}, ... }
@@ -63,7 +64,8 @@ function Requirements:SetMinGS(value)
 end
 
 function Requirements:SetFlag(flag, value)
-    if flag == "requireFullGems" or flag == "requireFullEnchants" or flag == "noPvPGear" then
+    if flag == "requireFullGems" or flag == "requireFullEnchants"
+        or flag == "noPvPGear" or flag == "flagOffSpecGear" then
         self[flag] = value and true or false
         fire()
     end
@@ -129,6 +131,7 @@ function Requirements:SavePreset(name)
         requireFullGems     = self.requireFullGems and true or false,
         requireFullEnchants = self.requireFullEnchants and true or false,
         noPvPGear           = self.noPvPGear and true or false,
+        flagOffSpecGear     = self.flagOffSpecGear and true or false,
         advancedComp        = self.advancedComp and true or false,
         specRequirements    = specs,
     }
@@ -149,6 +152,12 @@ function Requirements:LoadPreset(name)
     self.requireFullGems     = p.requireFullGems and true or false
     self.requireFullEnchants = p.requireFullEnchants and true or false
     self.noPvPGear           = p.noPvPGear and true or false
+    -- Older presets predate this flag; default it ON when absent.
+    if p.flagOffSpecGear == nil then
+        self.flagOffSpecGear = true
+    else
+        self.flagOffSpecGear = p.flagOffSpecGear and true or false
+    end
     self.advancedComp        = p.advancedComp and true or false
     self.specRequirements    = {}
     for _, sr in ipairs(p.specRequirements or {}) do
@@ -259,6 +268,20 @@ function Requirements:ValidatePlayer(result)
     end
     if self.noPvPGear and result.pvpItemCount and result.pvpItemCount > 0 then
         table.insert(warnings, ("PvP gear: %d pieces"):format(result.pvpItemCount))
+    end
+    if self.flagOffSpecGear and result.offSpecCount and result.offSpecCount > 0 then
+        local names = {}
+        for _, it in ipairs(result.offSpecItems) do
+            table.insert(names, it.slotName)
+        end
+        table.insert(warnings, "Off-spec gear: " .. table.concat(names, ", "))
+    end
+    if self.flagOffSpecGear and result.wrongArmorCount and result.wrongArmorCount > 0 then
+        local parts = {}
+        for _, it in ipairs(result.wrongArmorItems) do
+            table.insert(parts, ("%s (%s)"):format(it.slotName, it.armorType))
+        end
+        table.insert(warnings, "Wrong armor type: " .. table.concat(parts, ", "))
     end
 
     return (#warnings == 0), warnings

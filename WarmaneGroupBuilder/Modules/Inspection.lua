@@ -55,6 +55,23 @@ local ALL_INSPECT_SLOTS = {
     1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
 }
 
+-- Slots scanned for off-spec gear (shirt 4 and tabard 19 carry no stats). For
+-- non-hunters slot 18 is a relic/thrown with no role-defining stats, so it is
+-- skipped naturally by WGB.ItemArchetype returning nil.
+local OFFSPEC_SLOTS = { 1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,17,18 }
+local OFFSPEC_SLOT_NAMES = {
+    [1]  = "Head",     [2]  = "Neck",      [3]  = "Shoulders", [5]  = "Chest",
+    [6]  = "Waist",    [7]  = "Legs",      [8]  = "Feet",      [9]  = "Wrists",
+    [10] = "Hands",    [11] = "Ring 1",    [12] = "Ring 2",    [13] = "Trinket 1",
+    [14] = "Trinket 2",[15] = "Cloak",     [16] = "Main Hand", [17] = "Off Hand",
+    [18] = "Ranged",
+}
+
+-- The 8 main armor slots scanned for wrong armor TYPE (proficiency). Cloak (15),
+-- rings/neck/trinkets are Cloth/Misc for every class and must be excluded or a
+-- plate wearer's cloth cloak would false-flag.
+local ARMOR_SLOTS = { 1,3,5,6,7,8,9,10 }
+
 -- Enchant detection from the item link, NOT a tooltip scan.
 -- On 3.3.5a the tooltip enchant line is a plain green stat line with NO
 -- "Enchanted:" prefix (that label is a retail-only feature), so scraping for
@@ -123,6 +140,12 @@ local function gatherResult(unit, inspectFlag)
         dominantSpec     = false,       -- true when primary tree has >= 51 points
         specConfidence   = "unknown",   -- "high" | "low" | "unknown"
         druidForm        = nil,         -- "bear" | "cat" | "tree" | "moonkin" | nil
+        offSpecItems     = {},          -- list of { slot, slotName, name, archetype }
+        offSpecCount     = 0,
+        gearIntent       = nil,         -- "spellUser" | "physicalPure" | "tankPure" | "hybridMelee"
+        wrongArmorItems  = {},          -- list of { slot, slotName, name, armorType }
+        wrongArmorCount  = 0,
+        expectedArmor    = nil,         -- "Cloth"|"Leather"|"Mail"|"Plate" this class should wear
         slots            = {},
     }
 
@@ -191,6 +214,57 @@ local function gatherResult(unit, inspectFlag)
                 result.druidForm = "moonkin"; break
             end
         end
+    end
+
+    -- Off-spec gear: compare each equipped item's archetype against the gear
+    -- archetypes this spec should wear. Flags e.g. a tank in healer gear or a
+    -- DPS in tank gear. Spec/form are resolved above, so the intent is known.
+    if WGB.GearIntent then
+        local accept, intentName = WGB.GearIntent(class, result)
+        result.gearIntent = intentName
+        if accept then
+            for _, slot in ipairs(OFFSPEC_SLOTS) do
+                local link = result.slots[slot]
+                if link then
+                    local arche = WGB.ItemArchetype(link)
+                    if arche and not accept[arche] then
+                        table.insert(result.offSpecItems, {
+                            slot      = slot,
+                            slotName  = OFFSPEC_SLOT_NAMES[slot] or ("Slot " .. slot),
+                            name      = link:match("%[(.-)%]") or "?",
+                            archetype = arche,
+                        })
+                    end
+                end
+            end
+            result.offSpecCount = #result.offSpecItems
+        end
+    end
+
+    -- Wrong armor type: a class wearing armor below its proficiency (a paladin
+    -- in cloth/leather, a hunter in leather). Only the 8 main armor slots are
+    -- checked; cloak/rings/neck/trinkets are Cloth/Misc for everyone and would
+    -- false-flag. Warriors are lenient (leather/mail allowed, cloth still flagged).
+    if WGB.WrongArmorType then
+        for _, slot in ipairs(ARMOR_SLOTS) do
+            local link = result.slots[slot]
+            if link then
+                local atype = WGB.ItemArmorType(link)
+                if atype then
+                    local wrong, expected = WGB.WrongArmorType(class, atype)
+                    result.expectedArmor = expected
+                    if wrong then
+                        table.insert(result.wrongArmorItems, {
+                            slot      = slot,
+                            slotName  = OFFSPEC_SLOT_NAMES[slot] or ("Slot " .. slot),
+                            name      = link:match("%[(.-)%]") or "?",
+                            armorType = atype,
+                        })
+                    end
+                end
+            end
+        end
+        result.wrongArmorCount = #result.wrongArmorItems
     end
 
     -- GearScore: synchronous attempt now, then a deferred retry to fill in

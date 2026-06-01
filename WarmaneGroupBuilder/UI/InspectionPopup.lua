@@ -14,7 +14,7 @@ WGB.InspectionPopup = Popup
 local function build()
     if Popup.frame then return Popup.frame end
     local f = CreateFrame("Frame", "WGBInspectionPopup", UIParent)
-    f:SetSize(360, 240)
+    f:SetSize(360, 326)
     f:SetPoint("CENTER", 0, 100)
     f:SetFrameStrata("HIGH")
     f:SetBackdrop({
@@ -48,6 +48,16 @@ local function build()
 
     f.pvp = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     f.pvp:SetPoint("TOPLEFT", 16, -154)
+
+    f.offspec = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.offspec:SetPoint("TOPLEFT", 16, -176)
+    f.offspec:SetWidth(330); f.offspec:SetJustifyH("LEFT")
+    f.offspec:SetNonSpaceWrap(true)
+
+    f.armor = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.armor:SetPoint("TOPLEFT", 16, -210)
+    f.armor:SetWidth(330); f.armor:SetJustifyH("LEFT")
+    f.armor:SetNonSpaceWrap(true)
 
     -- Buttons
     local approve = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -121,6 +131,31 @@ function Popup:Show(name, result)
         f.pvp:SetText(WGB.Color(WGB.COLOR.RED, ("PvP gear: %d pieces"):format(result.pvpItemCount)))
     else
         f.pvp:SetText("")
+    end
+
+    if result.offSpecCount and result.offSpecCount > 0 then
+        local parts = {}
+        for _, it in ipairs(result.offSpecItems) do
+            table.insert(parts, ("%s (%s)"):format(it.slotName, WGB.ArchetypeLabel(it.archetype)))
+        end
+        f.offspec:SetText(WGB.Color(WGB.COLOR.RED,
+            L["OFFSPEC_GEAR"]:format(table.concat(parts, ", "))))
+    elseif result.gearIntent then
+        f.offspec:SetText(WGB.Color(WGB.COLOR.GREEN, L["OFFSPEC_GEAR_OK"]))
+    else
+        -- Spec unknown (no dominant tree) — we can't judge gear role.
+        f.offspec:SetText("")
+    end
+
+    if result.wrongArmorCount and result.wrongArmorCount > 0 then
+        local parts = {}
+        for _, it in ipairs(result.wrongArmorItems) do
+            table.insert(parts, ("%s (%s)"):format(it.slotName, it.armorType))
+        end
+        f.armor:SetText(WGB.Color(WGB.COLOR.RED,
+            L["WRONG_ARMOR"]:format(table.concat(parts, ", "))))
+    else
+        f.armor:SetText("")
     end
 
     f:Show()

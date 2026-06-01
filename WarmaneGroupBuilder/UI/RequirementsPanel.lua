@@ -60,7 +60,28 @@ end
 -- Comp builder selection state (session-only; the committed requirements live
 -- in WGB.Requirements.specRequirements).
 local selClass, selSpec
-local MAX_COMP_ROWS = 6
+local COMP_ROW_HEIGHT    = 16
+local VISIBLE_COMP_ROWS  = 5     -- rows visible before the list scrolls
+local COMP_LIST_WIDTH    = 450
+
+-- Lazily create (and cache) a clickable row inside the scroll child.
+local function acquireCompRow(adv, i)
+    local row = adv.rows[i]
+    if row then return row end
+    row = CreateFrame("Button", nil, adv.scrollChild)
+    row:SetSize(COMP_LIST_WIDTH, COMP_ROW_HEIGHT)
+    row:SetPoint("TOPLEFT", 0, -(i - 1) * COMP_ROW_HEIGHT)
+    row:RegisterForClicks("RightButtonUp")
+    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.text:SetPoint("LEFT", 0, 0)
+    row.text:SetWidth(COMP_LIST_WIDTH - 10); row.text:SetJustifyH("LEFT")
+    row:SetScript("OnClick", function(self)
+        if self.specIndex then WGB.Requirements:RemoveSpecRequirement(self.specIndex) end
+    end)
+    adv.rows[i] = row
+    return row
+end
+
 
 local function build()
     if frame then return frame end
@@ -114,6 +135,8 @@ local function build()
         function(v) WGB.Requirements:SetFlag("requireFullEnchants", v) end)
     widgets.noPvP    = makeCheck(frame, L["NO_PVP_GEAR"], 8, -240,
         function(v) WGB.Requirements:SetFlag("noPvPGear", v) end)
+    widgets.offSpec  = makeCheck(frame, L["FLAG_OFFSPEC_GEAR"], 300, -240,
+        function(v) WGB.Requirements:SetFlag("flagOffSpecGear", v) end)
 
     -- Refill flow (right column): advertise to backfill an in-progress group and
     -- tag the boss it's currently on. Boss dropdown reads the live activity list.
@@ -207,31 +230,32 @@ local function build()
         WGB.Requirements:AddSpecRequirement(selClass, selSpec, n)
     end)
 
-    -- Requirement list (right-click a row to remove it).
-    local listY = rowY - 30
+    -- Requirement list (right-click a row to remove it). The list lives inside a
+    -- scroll frame so a full 25-man comp (10+ distinct spec rows) stays reachable
+    -- instead of being capped at the handful of rows that fit the panel.
+    local countY = rowY - 28
+    adv.countSummary = makeLabel(frame, "", 16, countY, 460)
+
+    local listY = countY - 20
+    adv.scroll = CreateFrame("ScrollFrame", "WGBCompListScroll", frame, "UIPanelScrollFrameTemplate")
+    adv.scroll:SetPoint("TOPLEFT", 16, listY)
+    adv.scroll:SetSize(COMP_LIST_WIDTH, VISIBLE_COMP_ROWS * COMP_ROW_HEIGHT)
+
+    adv.scrollChild = CreateFrame("Frame", nil, adv.scroll)
+    adv.scrollChild:SetSize(COMP_LIST_WIDTH, VISIBLE_COMP_ROWS * COMP_ROW_HEIGHT)
+    adv.scroll:SetScrollChild(adv.scrollChild)
+
+    -- Rows are pooled lazily into the scroll child as the comp grows.
     adv.rows = {}
-    for i = 1, MAX_COMP_ROWS do
-        local row = CreateFrame("Button", nil, frame)
-        row:SetSize(440, 16)
-        row:SetPoint("TOPLEFT", 16, listY - (i - 1) * 16)
-        row:RegisterForClicks("RightButtonUp")
-        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        row.text:SetPoint("LEFT", 0, 0)
-        row.text:SetWidth(420); row.text:SetJustifyH("LEFT")
-        row:SetScript("OnClick", function(self)
-            if self.specIndex then WGB.Requirements:RemoveSpecRequirement(self.specIndex) end
-        end)
-        row:Hide()
-        adv.rows[i] = row
-    end
-    adv.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    adv.empty:SetPoint("TOPLEFT", 16, listY)
+
+    adv.empty = adv.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    adv.empty:SetPoint("TOPLEFT", 0, 0)
     adv.empty:SetText(L["COMP_LIST_EMPTY"])
 
     -- Saved comp presets (always visible — loading one can also flip Advanced on).
     local pre = {}
     widgets.presets = pre
-    local presY = listY - (MAX_COMP_ROWS + 1) * 16
+    local presY = listY - VISIBLE_COMP_ROWS * COMP_ROW_HEIGHT - 14
 
     pre.title = makeLabel(frame, L["COMP_PRESETS"] .. ":", 8, presY)
 
@@ -312,6 +336,8 @@ local function setAdvShown(shown)
     adv.specDD[fn](adv.specDD)
     adv.count.border[fn](adv.count.border)
     adv.addBtn[fn](adv.addBtn)
+    adv.countSummary[fn](adv.countSummary)
+    adv.scroll[fn](adv.scroll)
     adv.empty[fn](adv.empty)
     for _, row in ipairs(adv.rows) do
         if shown and row.specIndex then row:Show() else row:Hide() end
@@ -329,22 +355,36 @@ local function refreshComp()
     if not adv then return end
     local r = WGB.Requirements
     local list = r.specRequirements
-    local shown = math.min(#adv.rows, #list)
-    for i = 1, shown do
+
+    -- Tally the chosen comp into role buckets for the summary header.
+    local sum = { tank = 0, heal = 0, mdps = 0, rdps = 0 }
+    for _, sr in ipairs(list) do
+        local role = WGB.CompSpecRole(sr.class, sr.spec)
+        sum[role] = (sum[role] or 0) + (sr.count or 1)
+    end
+    local total = sum.tank + sum.heal + sum.mdps + sum.rdps
+    adv.countSummary:SetText(
+        L["COMP_COUNT_SUMMARY"]:format(sum.tank, sum.heal, sum.mdps, sum.rdps, total))
+
+    for i = 1, #list do
         local sr  = list[i]
-        local row = adv.rows[i]
+        local row = acquireCompRow(adv, i)
         row.specIndex = i
         row.text:SetText(("%d. %dx %s %s   |cFF888888(right-click to remove)|r"):format(
             i, sr.count or 1, sr.spec or "?", WGB.ClassLabel(sr.class)))
+        row:Show()
     end
-    for i = shown + 1, #adv.rows do
+    for i = #list + 1, #adv.rows do
         adv.rows[i].specIndex = nil
         adv.rows[i]:Hide()
     end
+
+    -- Grow the scroll child so the scrollbar engages once the list overflows.
+    local rows = math.max(#list, VISIBLE_COMP_ROWS)
+    adv.scrollChild:SetHeight(rows * COMP_ROW_HEIGHT)
+
     if #list == 0 then
         adv.empty:SetText(L["COMP_LIST_EMPTY"])
-    elseif #list > #adv.rows then
-        adv.empty:SetText(("|cFF888888+%d more|r"):format(#list - #adv.rows))
     else
         adv.empty:SetText("")
     end
@@ -376,6 +416,7 @@ local function refresh()
     widgets.fullGems:SetChecked(r.requireFullGems)
     widgets.fullEnch:SetChecked(r.requireFullEnchants)
     widgets.noPvP:SetChecked(r.noPvPGear)
+    widgets.offSpec:SetChecked(r.flagOffSpecGear)
     widgets.refill:SetChecked(r.refillMode)
     setRefillShown(r.refillMode)
     if r.currentBoss and r.currentBoss ~= "" then
