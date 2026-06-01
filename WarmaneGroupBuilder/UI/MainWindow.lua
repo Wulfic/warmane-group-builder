@@ -311,7 +311,12 @@ function MainWindow:Toggle()
     if self.frame:IsShown() then
         self.frame:Hide()
     else
-        if not self.current and self.tabs[1] then
+        -- Re-open through OpenTab so the current tab's EditBoxes (hidden by the
+        -- frame's OnHide handler) get shown again. A plain frame:Show() would
+        -- leave every input box invisible until the user clicked another tab.
+        if self.current and self.tabById[self.current] then
+            self:OpenTab(self.current)
+        elseif self.tabs[1] then
             self:OpenTab(self.tabs[1].id)
         else
             self.frame:Show()

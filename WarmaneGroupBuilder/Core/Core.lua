@@ -6,7 +6,10 @@ _G.WGB = _G.WGB or {}
 local WGB = _G.WGB
 
 WGB.ADDON_NAME   = ADDON
-WGB.VERSION      = "0.1.0"
+-- Derive the version straight from the .toc metadata so the two can never
+-- drift (a stale literal here used to print a "version mismatch" warning on
+-- every login). Falls back to a literal only if the API is unavailable.
+WGB.VERSION      = (GetAddOnMetadata and GetAddOnMetadata(ADDON, "Version")) or "1.0.0"
 WGB.L            = ns.L  -- locale table set up in Locale-enUS.lua
 WGB._ns          = ns
 

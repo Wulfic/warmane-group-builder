@@ -93,11 +93,18 @@ end
 
 function AutoInvite:_pump()
     if #self.inviteQueue == 0 then return end
+    -- Drop any leading names that are already in the group WITHOUT spending the
+    -- invite throttle on them — otherwise a stale whisperer who already joined
+    -- would consume the 1.6s slot and delay the next real invite.
+    while #self.inviteQueue > 0 and isInGroup(self.inviteQueue[1]) do
+        table.remove(self.inviteQueue, 1)
+    end
+    if #self.inviteQueue == 0 then return end
+    -- Group filled up while names were queued: stop inviting.
+    if WGB.Requirements and WGB.Requirements:IsFull() then return end
+    -- Only now spend the throttle, since we have a genuinely invitable name.
     if not WGB.Throttle("autoinvite", INVITE_GAP) then return end
     local name = table.remove(self.inviteQueue, 1)
-    -- Re-validate at send time (state may have changed while queued)
-    if isInGroup(name) then return end
-    if WGB.Requirements and WGB.Requirements:IsFull() then return end
 
     local ok, why = WGB.SafeInvite(name)
     if not ok then
