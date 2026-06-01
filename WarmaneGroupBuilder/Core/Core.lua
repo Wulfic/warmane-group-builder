@@ -16,6 +16,7 @@ WGB._ns          = ns
 local DEFAULT_SETTINGS = {
     version              = 1,
     debug                = false,
+    enabled              = true,   -- master switch; when false all auto features are suspended
     mainWindow           = { x = 0, y = 0, point = "CENTER", width = 580, height = 620, shown = false },
     minimapAngle         = 215,
     showMinimap          = true,
@@ -74,6 +75,27 @@ end
 function WGB.Warn(msg)
     local ts = date("%H:%M:%S")
     DEFAULT_CHAT_FRAME:AddMessage("|cFFFF8000[WGB-WARN " .. ts .. "]|r " .. tostring(msg))
+end
+
+-- ----------------------------------------------------------------------------
+-- Master enable switch
+-- When disabled the addon stops all background automation (auto-invite
+-- whisper listener, auto-repeat advertising). The per-feature prefs
+-- (autoInviteEnabled / autoRepeatEnabled) are preserved so toggling the
+-- master switch back on restores whatever the user had configured.
+-- ----------------------------------------------------------------------------
+function WGB.IsEnabled()
+    -- Default to enabled if settings haven't loaded yet.
+    return not WGB_Settings or WGB_Settings.enabled ~= false
+end
+
+function WGB.SetEnabled(on)
+    on = on and true or false
+    if WGB_Settings then WGB_Settings.enabled = on end
+    WGB.Print(on and "|cFF00FF00Enabled.|r" or "|cFFFF8000Disabled.|r Auto features suspended.")
+    if WGB.Events and WGB.Events.Fire then
+        WGB.Events:Fire("WGB_ENABLED_CHANGED", on)
+    end
 end
 
 -- ----------------------------------------------------------------------------

@@ -67,8 +67,9 @@ local function formatGS(gs)
 end
 
 -- Compact, fill-aware spec fragment: the class/spec slots STILL needed, e.g.
--- "1 Holy Pal/2 Resto Sham". Mirrors the role fragment's "/" style so the
--- advert reads the same whether it's listing roles or specific specs.
+-- "1 Hpal/2 Resto Sham". Mirrors the role fragment's "/" style and uses the
+-- ultra-compact WGB.SpecShort labels so the advert never balloons past the
+-- 255-char chat cap once it switches from broad roles to specific specs.
 local function specsFragment()
     local req = WGB.Requirements
     if not req then return "" end
@@ -76,8 +77,9 @@ local function specsFragment()
     if #remaining == 0 then return "" end
     local parts = {}
     for _, s in ipairs(remaining) do
-        local cls = WGB.ClassShort and WGB.ClassShort(s.class) or s.class
-        table.insert(parts, ("%d %s %s"):format(s.count or 1, s.spec or "", cls or ""))
+        local short = WGB.SpecShort and WGB.SpecShort(s.class, s.spec)
+                      or ((s.spec or "") .. " " .. (WGB.ClassShort and WGB.ClassShort(s.class) or s.class or ""))
+        table.insert(parts, ("%d %s"):format(s.count or 1, short))
     end
     return table.concat(parts, "/")
 end
@@ -125,6 +127,11 @@ function Advert:BuildMessage()
         table.insert(segs, formatGS(req.minGS) .. " GS+")
     end
 
+    -- Note the achievement requirement so applicants know to whisper "achieve".
+    if req and req.requireAchievement then
+        table.insert(segs, L["ADVERT_ACHIEVEMENT"])
+    end
+
     local roles = rolesFragment()
 
     -- While the raid is first forming we advertise broad roles (wide reach). Once
@@ -164,6 +171,11 @@ function Advert:GetMessage()
 end
 
 function Advert:Send(isAuto)
+    -- Master switch: nothing broadcasts while the addon is disabled.
+    if not WGB.IsEnabled() then
+        if not isAuto then WGB.Print("|cFFFF8000WGB is disabled.|r Enable it to send.") end
+        return false
+    end
     -- Manual sends (button / slash) arm the session; auto-repeat refuses to
     -- fire until then, so the addon can't start broadcasting on its own.
     if isAuto then
@@ -221,9 +233,15 @@ function Advert:StartAutoRepeat(intervalMin)
 end
 
 function Advert:StopAutoRepeat()
+    self:_cancelTicker()
+    if WGB_Settings then WGB_Settings.autoRepeatEnabled = false end
+end
+
+-- Cancel the ticker without clearing the autoRepeatEnabled pref. Used by the
+-- master enable switch so re-enabling can restore the user's auto-repeat.
+function Advert:_cancelTicker()
     if self.autoRepeat then self.autoRepeat:Cancel() end
     self.autoRepeat = nil
-    if WGB_Settings then WGB_Settings.autoRepeatEnabled = false end
 end
 
 function Advert:CooldownRemaining()
@@ -240,7 +258,21 @@ WGB.Events:Register("ROLE_FILLED",          Advert, function(self) self.dirty = 
 -- Re-arm auto-repeat across /reload. The setting persists in saved vars but
 -- the ticker is Lua-state only, so without this it silently stays off.
 WGB.Events:Register("WGB_PLAYER_LOGIN", Advert, function(self)
+    if not WGB.IsEnabled() then return end
     if WGB_Settings and WGB_Settings.autoRepeatEnabled then
         self:StartAutoRepeat(WGB_Settings.autoRepeatInterval)
+    end
+end)
+
+-- Master enable switch: suspend the auto-repeat ticker when disabled and
+-- restore it (if the user had auto-repeat on) when re-enabled, without
+-- clobbering the autoRepeatEnabled pref.
+WGB.Events:Register("WGB_ENABLED_CHANGED", Advert, function(self, on)
+    if on then
+        if WGB_Settings and WGB_Settings.autoRepeatEnabled then
+            self:StartAutoRepeat(WGB_Settings.autoRepeatInterval)
+        end
+    else
+        self:_cancelTicker()
     end
 end)

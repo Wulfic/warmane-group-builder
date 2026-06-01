@@ -163,6 +163,29 @@ WGB.ClassSpecs = {
     DRUID       = { "Balance", "Feral", "Restoration" },
 }
 
+-- Map a raw talent-tab name from GetTalentTabInfo (e.g. "Elemental Combat",
+-- "Feral Combat") to the canonical spec name in WGB.ClassSpecs, AND confirm it
+-- belongs to `class`. Returns the canonical spec, or nil when the tab name is
+-- not a spec of that class.
+--
+-- The nil case is the important one: on 3.3.5a GetTalentTabInfo(_, true) returns
+-- the most recently *cached* inspect target's talents. Warmane does not pass a
+-- GUID to INSPECT_TALENT_READY, so a late event from a previous target can be
+-- read against the current unit — e.g. a Shaman ends up showing a Death Knight's
+-- "Blood" tree. A nil return means the cache is stale and the inspect should be
+-- retried rather than trusting the bogus spec.
+function WGB.NormalizeSpec(class, tabName)
+    if not class or not tabName or tabName == "" then return nil end
+    local specs = WGB.ClassSpecs[class]
+    if not specs then return nil end
+    for _, spec in ipairs(specs) do
+        if tabName == spec or tabName:find(spec, 1, true) then
+            return spec
+        end
+    end
+    return nil
+end
+
 -- Dropdown order for the comp builder.
 WGB.ClassOrder = {
     "DEATHKNIGHT", "DRUID", "HUNTER", "MAGE", "PALADIN",
@@ -189,6 +212,60 @@ end
 
 function WGB.ClassLabel(class)
     return CLASS_LABEL[class] or class or "?"
+end
+
+-- Ultra-compact class+spec labels for the advert spec fragment. Keeps the LFM
+-- message short once it switches from broad roles to specific specs — without
+-- this, "1 Restoration Shaman/1 Demonology Warlock/..." blows past the 255-char
+-- chat cap. Keyed "CLASS|Spec"; a few combos collapse to a single well-known
+-- token (Boomy, BDK, Hpal, Ret). Falls back to "<spec> <ClassShort>".
+local SPEC_SHORT = {
+    -- Warrior
+    ["WARRIOR|Arms"]            = "Arms War",
+    ["WARRIOR|Fury"]            = "F War",
+    ["WARRIOR|Protection"]      = "Prot War",
+    -- Paladin
+    ["PALADIN|Holy"]            = "Hpal",
+    ["PALADIN|Protection"]      = "Prot Pal",
+    ["PALADIN|Retribution"]     = "Ret",
+    -- Hunter
+    ["HUNTER|Beast Mastery"]    = "BM Hunt",
+    ["HUNTER|Marksmanship"]     = "MM Hunt",
+    ["HUNTER|Survival"]         = "Surv Hunt",
+    -- Rogue
+    ["ROGUE|Assassination"]     = "Assa Rogue",
+    ["ROGUE|Combat"]            = "Combat Rogue",
+    ["ROGUE|Subtlety"]          = "Sub Rogue",
+    -- Priest
+    ["PRIEST|Discipline"]       = "Disc Priest",
+    ["PRIEST|Holy"]             = "H Priest",
+    ["PRIEST|Shadow"]           = "S Priest",
+    -- Death Knight
+    ["DEATHKNIGHT|Blood"]       = "BDK",
+    ["DEATHKNIGHT|Frost"]       = "Frost DK",
+    ["DEATHKNIGHT|Unholy"]      = "UHDK",
+    -- Shaman
+    ["SHAMAN|Elemental"]        = "Ele Sham",
+    ["SHAMAN|Enhancement"]      = "Enh Sham",
+    ["SHAMAN|Restoration"]      = "Resto Sham",
+    -- Mage
+    ["MAGE|Arcane"]             = "Arc Mage",
+    ["MAGE|Fire"]               = "F Mage",
+    ["MAGE|Frost"]              = "Frost Mage",
+    -- Warlock
+    ["WARLOCK|Affliction"]      = "Aff Lock",
+    ["WARLOCK|Demonology"]      = "Demo Lock",
+    ["WARLOCK|Destruction"]     = "Destro Lock",
+    -- Druid
+    ["DRUID|Balance"]           = "Boomy",
+    ["DRUID|Feral"]             = "Feral Druid",
+    ["DRUID|Restoration"]       = "Resto Druid",
+}
+
+function WGB.SpecShort(class, spec)
+    local s = SPEC_SHORT[(class or "") .. "|" .. (spec or "")]
+    if s then return s end
+    return ((spec or "") .. " " .. (WGB.ClassShort(class))):match("^%s*(.-)%s*$")
 end
 
 -- Deterministic role bucket (tank/heal/mdps/rdps) for an explicitly chosen

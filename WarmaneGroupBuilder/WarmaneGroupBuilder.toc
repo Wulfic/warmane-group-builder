@@ -2,8 +2,8 @@
 ## Title: Warmane Group Builder
 ## Notes: LFM advertisement, auto-invite, inspection and loot-rule manager for Warmane PUGs.
 ## Author: tyler
-## Version: 0.1.0
-## X-Website: https://github.com/tyler/warmane-group-builder
+## Version: 1.0.0
+## X-Website: https://github.com/Wulfic/warmane-group-builder
 ## SavedVariables: WGB_Settings
 ## SavedVariablesPerCharacter: WGB_CharSettings
 
@@ -22,6 +22,7 @@ Modules\Requirements.lua
 Modules\LootRules.lua
 Modules\GearScore.lua
 Modules\Inspection.lua
+Modules\RaidAchievements.lua
 Modules\Advertisement.lua
 Modules\AutoInvite.lua
 Modules\GroupManager.lua
@@ -34,6 +35,7 @@ UI\AdvertPanel.lua
 UI\InspectionPopup.lua
 UI\GroupStatusPanel.lua
 UI\ConfigPanel.lua
+UI\AboutPanel.lua
 UI\MinimapButton.lua
 
 # Slash commands wired last so every module is registered

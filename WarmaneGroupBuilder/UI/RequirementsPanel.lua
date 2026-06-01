@@ -62,7 +62,7 @@ end
 local selClass, selSpec
 local COMP_ROW_HEIGHT    = 16
 local VISIBLE_COMP_ROWS  = 5     -- rows visible before the list scrolls
-local COMP_LIST_WIDTH    = 450
+local COMP_LIST_WIDTH    = 300   -- narrowed for ~338 px half-panel
 
 -- Lazily create (and cache) a clickable row inside the scroll child.
 local function acquireCompRow(adv, i)
@@ -87,7 +87,7 @@ local function build()
     if frame then return frame end
     frame = CreateFrame("Frame")
 
-    makeLabel(frame, L["ACTIVITY"] .. ":", 8, -8)
+    widgets.activityLabel = makeLabel(frame, L["ACTIVITY"] .. ":", 8, -8)
     widgets.activity = makeActivityDropdown(frame, 90, -4)
 
     -- Custom activity name input (visible only when "Custom" is selected).
@@ -102,23 +102,23 @@ local function build()
     widgets.customName.border:Hide()
 
     local rolesY = -80
-    makeLabel(frame, L["ROLE_TANK"], 8, rolesY)
+    widgets.tankLabel = makeLabel(frame, L["ROLE_TANK"], 8, rolesY)
     widgets.tank = makeEditNumber(frame, 90, rolesY + 4, 50,
         function(v) WGB.Requirements:SetRole("tank", v) end)
 
-    makeLabel(frame, L["ROLE_HEAL"], 160, rolesY)
+    widgets.healLabel = makeLabel(frame, L["ROLE_HEAL"], 160, rolesY)
     widgets.heal = makeEditNumber(frame, 240, rolesY + 4, 50,
         function(v) WGB.Requirements:SetRole("heal", v) end)
 
-    makeLabel(frame, L["ROLE_RDPS"], 8, rolesY - 28)
+    widgets.rdpsLabel = makeLabel(frame, L["ROLE_RDPS"], 8, rolesY - 28)
     widgets.rdps = makeEditNumber(frame, 90, rolesY - 24, 50,
         function(v) WGB.Requirements:SetRole("rdps", v) end)
 
-    makeLabel(frame, L["ROLE_MDPS"], 160, rolesY - 28)
+    widgets.mdpsLabel = makeLabel(frame, L["ROLE_MDPS"], 160, rolesY - 28)
     widgets.mdps = makeEditNumber(frame, 240, rolesY - 24, 50,
         function(v) WGB.Requirements:SetRole("mdps", v) end)
 
-    makeLabel(frame, L["MIN_GS"] .. ":", 8, -150, 110)
+    widgets.gsLabel = makeLabel(frame, L["MIN_GS"] .. ":", 8, -150, 110)
     widgets.gs = makeEditNumber(frame, 124, -146, 70,
         function(v) WGB.Requirements:SetMinGS(v) end)
     widgets.gsDisable = makeCheck(frame, L["GS_DISABLE"], 204, -150,
@@ -135,17 +135,18 @@ local function build()
         function(v) WGB.Requirements:SetFlag("requireFullEnchants", v) end)
     widgets.noPvP    = makeCheck(frame, L["NO_PVP_GEAR"], 8, -240,
         function(v) WGB.Requirements:SetFlag("noPvPGear", v) end)
-    widgets.offSpec  = makeCheck(frame, L["FLAG_OFFSPEC_GEAR"], 300, -240,
+    widgets.offSpec  = makeCheck(frame, L["FLAG_OFFSPEC_GEAR"], 170, -240,
         function(v) WGB.Requirements:SetFlag("flagOffSpecGear", v) end)
+    widgets.reqAchieve = makeCheck(frame, L["REQUIRE_ACHIEVEMENT"], 170, -180,
+        function(v) WGB.Requirements:SetFlag("requireAchievement", v) end)
 
-    -- Refill flow (right column): advertise to backfill an in-progress group and
-    -- tag the boss it's currently on. Boss dropdown reads the live activity list.
-    widgets.refill = makeCheck(frame, L["REFILL_MODE"], 300, -150,
+    -- Refill + boss section stacked below the gear flags (was a right column)
+    widgets.refill = makeCheck(frame, L["REFILL_MODE"], 8, -268,
         function(v) WGB.Requirements:SetRefillMode(v) end)
 
-    widgets.bossLabel = makeLabel(frame, L["BOSS"] .. ":", 300, -184)
+    widgets.bossLabel = makeLabel(frame, L["BOSS"] .. ":", 8, -296)
     widgets.bossDD = CreateFrame("Frame", "WGBBossDropdown", frame, "UIDropDownMenuTemplate")
-    widgets.bossDD:SetPoint("TOPLEFT", 300 - 16, -204 + 4)
+    widgets.bossDD:SetPoint("TOPLEFT", 8 - 16, -312)
     UIDropDownMenu_SetWidth(widgets.bossDD, 150)
     UIDropDownMenu_Initialize(widgets.bossDD, function()
         for _, boss in ipairs(WGB.GetBosses(WGB.Requirements.activity)) do
@@ -162,21 +163,21 @@ local function build()
     end)
 
     -- Advanced raid-comp toggle + builder ------------------------------------
-    widgets.advanced = makeCheck(frame, L["ADVANCED_COMP"], 8, -274,
+    widgets.advanced = makeCheck(frame, L["ADVANCED_COMP"], 8, -360,
         function(v) WGB.Requirements:SetAdvancedComp(v) end)
 
     -- Everything below is only shown while Advanced is enabled.
     local adv = {}
     widgets.adv = adv
 
-    local compY = -306
+    local compY = -390
     adv.title = makeLabel(frame, L["SPEC_REQUIREMENTS"] .. ":", 8, compY)
 
     local rowY = compY - 26
 
     adv.classDD = CreateFrame("Frame", "WGBCompClassDropdown", frame, "UIDropDownMenuTemplate")
     adv.classDD:SetPoint("TOPLEFT", 8 - 16, rowY + 4)
-    UIDropDownMenu_SetWidth(adv.classDD, 110)
+    UIDropDownMenu_SetWidth(adv.classDD, 80)
     UIDropDownMenu_Initialize(adv.classDD, function()
         for _, class in ipairs(WGB.ClassOrder) do
             local info = UIDropDownMenu_CreateInfo()
@@ -194,8 +195,8 @@ local function build()
     end)
 
     adv.specDD = CreateFrame("Frame", "WGBCompSpecDropdown", frame, "UIDropDownMenuTemplate")
-    adv.specDD:SetPoint("TOPLEFT", 130 - 16, rowY + 4)
-    UIDropDownMenu_SetWidth(adv.specDD, 110)
+    adv.specDD:SetPoint("TOPLEFT", 112 - 16, rowY + 4)
+    UIDropDownMenu_SetWidth(adv.specDD, 80)
     UIDropDownMenu_Initialize(adv.specDD, function()
         local specs = (selClass and WGB.ClassSpecs[selClass]) or {}
         for _, spec in ipairs(specs) do
@@ -212,7 +213,7 @@ local function build()
     end)
 
     adv.count = WGB.MakeInputBox(frame, 40, 24, true)
-    adv.count.border:SetPoint("TOPLEFT", 256, rowY + 4)
+    adv.count.border:SetPoint("TOPLEFT", 218, rowY + 4)
     adv.count:SetMaxLetters(2)
     adv.count:SetJustifyH("CENTER")
     adv.count:SetText("1")
@@ -230,11 +231,9 @@ local function build()
         WGB.Requirements:AddSpecRequirement(selClass, selSpec, n)
     end)
 
-    -- Requirement list (right-click a row to remove it). The list lives inside a
-    -- scroll frame so a full 25-man comp (10+ distinct spec rows) stays reachable
-    -- instead of being capped at the handful of rows that fit the panel.
+    -- Requirement list scroll
     local countY = rowY - 28
-    adv.countSummary = makeLabel(frame, "", 16, countY, 460)
+    adv.countSummary = makeLabel(frame, "", 16, countY, 300)
 
     local listY = countY - 20
     adv.scroll = CreateFrame("ScrollFrame", "WGBCompListScroll", frame, "UIPanelScrollFrameTemplate")
@@ -259,7 +258,7 @@ local function build()
 
     pre.title = makeLabel(frame, L["COMP_PRESETS"] .. ":", 8, presY)
 
-    pre.name = WGB.MakeInputBox(frame, 220, 24)
+    pre.name = WGB.MakeInputBox(frame, 190, 24)
     pre.name.border:SetPoint("TOPLEFT", 8, presY - 24)
     pre.name:SetMaxLetters(40)
     pre.name:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
@@ -281,13 +280,10 @@ local function build()
         end
     end)
 
-    -- Row 2: dropdown (interior width 190) + Load + Delete.
-    -- UIDropDownMenuTemplate adds ~28px for the arrow; we position the frame
-    -- at x-16 (standard offset) so the visible text area starts at x=8.
-    -- Visual right edge of the text area ≈ 8+190 = 198; buttons start at 206.
+    -- Row 2: dropdown + Load + Delete
     pre.dd = CreateFrame("Frame", "WGBCompPresetDropdown", frame, "UIDropDownMenuTemplate")
     pre.dd:SetPoint("TOPLEFT", 8 - 16, presY - 52)
-    UIDropDownMenu_SetWidth(pre.dd, 190)
+    UIDropDownMenu_SetWidth(pre.dd, 150)
     UIDropDownMenu_Initialize(pre.dd, function()
         for _, nm in ipairs(WGB.Requirements:ListPresets()) do
             local info = UIDropDownMenu_CreateInfo()
@@ -303,8 +299,8 @@ local function build()
     end)
 
     pre.loadBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    pre.loadBtn:SetPoint("TOPLEFT", 206, presY - 48)
-    pre.loadBtn:SetSize(80, 24)
+    pre.loadBtn:SetPoint("TOPLEFT", 174, presY - 48)
+    pre.loadBtn:SetSize(70, 24)
     pre.loadBtn:SetText(L["LOAD"])
     pre.loadBtn:SetScript("OnClick", function()
         if pre.selected and WGB.Requirements:LoadPreset(pre.selected) then
@@ -314,7 +310,7 @@ local function build()
 
     pre.delBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     pre.delBtn:SetPoint("TOPLEFT", pre.loadBtn, "TOPRIGHT", 6, 0)
-    pre.delBtn:SetSize(80, 24)
+    pre.delBtn:SetSize(70, 24)
     pre.delBtn:SetText(L["DELETE"])
     pre.delBtn:SetScript("OnClick", function()
         if pre.selected and WGB.Requirements:DeletePreset(pre.selected) then
@@ -327,27 +323,116 @@ local function build()
     return frame
 end
 
-local function setAdvShown(shown)
-    local adv = widgets.adv
-    if not adv then return end
-    local fn = shown and "Show" or "Hide"
-    adv.title[fn](adv.title)
-    adv.classDD[fn](adv.classDD)
-    adv.specDD[fn](adv.specDD)
-    adv.count.border[fn](adv.count.border)
-    adv.addBtn[fn](adv.addBtn)
-    adv.countSummary[fn](adv.countSummary)
-    adv.scroll[fn](adv.scroll)
-    adv.empty[fn](adv.empty)
-    for _, row in ipairs(adv.rows) do
-        if shown and row.specIndex then row:Show() else row:Hide() end
+local function placeDD(dd, x, yy)
+    dd:ClearAllPoints()
+    dd:SetPoint("TOPLEFT", x - 16, yy)
+end
+
+-- Position the whole panel body top-to-bottom, hiding the boss row when not in
+-- refill mode and the comp builder when Advanced is off, then size the section
+-- to exactly fit the visible content (so collapsing Advanced reclaims the space
+-- instead of leaving a tall empty gap).
+local function layoutBody()
+    if not frame then return end
+    local r = WGB.Requirements
+    local W = widgets
+    local adv = W.adv
+    local pre = W.presets
+    local y = -6
+
+    -- Activity
+    W.activityLabel:ClearAllPoints(); W.activityLabel:SetPoint("TOPLEFT", 8, y)
+    placeDD(W.activity, 90, y + 4)
+    y = y - 28
+
+    -- Custom activity name (only when "Custom" selected)
+    if r.activity == "custom" then
+        W.customName.border:ClearAllPoints()
+        W.customName.border:SetPoint("TOPLEFT", 8, y)
+        W.customName.border:Show()
+        y = y - 28
+    else
+        W.customName.border:Hide()
+    end
+
+    -- Roles
+    W.tankLabel:ClearAllPoints(); W.tankLabel:SetPoint("TOPLEFT", 8, y)
+    W.tank.border:ClearAllPoints(); W.tank.border:SetPoint("TOPLEFT", 90, y + 4)
+    W.healLabel:ClearAllPoints(); W.healLabel:SetPoint("TOPLEFT", 178, y)
+    W.heal.border:ClearAllPoints(); W.heal.border:SetPoint("TOPLEFT", 250, y + 4)
+    y = y - 26
+    W.rdpsLabel:ClearAllPoints(); W.rdpsLabel:SetPoint("TOPLEFT", 8, y)
+    W.rdps.border:ClearAllPoints(); W.rdps.border:SetPoint("TOPLEFT", 90, y + 4)
+    W.mdpsLabel:ClearAllPoints(); W.mdpsLabel:SetPoint("TOPLEFT", 178, y)
+    W.mdps.border:ClearAllPoints(); W.mdps.border:SetPoint("TOPLEFT", 250, y + 4)
+    y = y - 30
+
+    -- Min GearScore
+    W.gsLabel:ClearAllPoints(); W.gsLabel:SetPoint("TOPLEFT", 8, y)
+    W.gs.border:ClearAllPoints(); W.gs.border:SetPoint("TOPLEFT", 124, y + 4)
+    W.gsDisable:ClearAllPoints(); W.gsDisable:SetPoint("TOPLEFT", 204, y)
+    y = y - 28
+
+    -- Gear flags
+    W.fullGems:ClearAllPoints(); W.fullGems:SetPoint("TOPLEFT", 8, y)
+    W.reqAchieve:ClearAllPoints(); W.reqAchieve:SetPoint("TOPLEFT", 178, y); y = y - 24
+    W.fullEnch:ClearAllPoints(); W.fullEnch:SetPoint("TOPLEFT", 8, y); y = y - 24
+    W.noPvP:ClearAllPoints(); W.noPvP:SetPoint("TOPLEFT", 8, y)
+    W.offSpec:ClearAllPoints(); W.offSpec:SetPoint("TOPLEFT", 178, y)
+    y = y - 26
+
+    -- Refill + boss (boss row only when refill enabled)
+    W.refill:ClearAllPoints(); W.refill:SetPoint("TOPLEFT", 8, y); y = y - 24
+    if r.refillMode then
+        W.bossLabel:ClearAllPoints(); W.bossLabel:SetPoint("TOPLEFT", 8, y); W.bossLabel:Show()
+        placeDD(W.bossDD, 8, y - 18); W.bossDD:Show()
+        y = y - 18 - 28
+    else
+        W.bossLabel:Hide(); W.bossDD:Hide()
+    end
+
+    -- Advanced toggle
+    W.advanced:ClearAllPoints(); W.advanced:SetPoint("TOPLEFT", 8, y); y = y - 26
+
+    -- Advanced comp builder (only when enabled)
+    if r.advancedComp then
+        adv.title:ClearAllPoints(); adv.title:SetPoint("TOPLEFT", 8, y); adv.title:Show()
+        y = y - 24
+        placeDD(adv.classDD, 8, y + 4);  adv.classDD:Show()
+        placeDD(adv.specDD, 106, y + 4); adv.specDD:Show()
+        adv.count.border:ClearAllPoints(); adv.count.border:SetPoint("TOPLEFT", 200, y + 4); adv.count.border:Show()
+        adv.addBtn:Show()
+        y = y - 28
+        adv.countSummary:ClearAllPoints(); adv.countSummary:SetPoint("TOPLEFT", 16, y); adv.countSummary:Show()
+        y = y - 18
+        adv.scroll:ClearAllPoints(); adv.scroll:SetPoint("TOPLEFT", 16, y); adv.scroll:Show()
+        adv.empty:Show()
+        for _, row in ipairs(adv.rows) do
+            if row.specIndex then row:Show() else row:Hide() end
+        end
+        y = y - VISIBLE_COMP_ROWS * COMP_ROW_HEIGHT - 12
+    else
+        adv.title:Hide(); adv.classDD:Hide(); adv.specDD:Hide()
+        adv.count.border:Hide(); adv.addBtn:Hide(); adv.countSummary:Hide()
+        adv.scroll:Hide(); adv.empty:Hide()
+        for _, row in ipairs(adv.rows) do row:Hide() end
+    end
+
+    -- Saved comp presets (always visible)
+    pre.title:ClearAllPoints(); pre.title:SetPoint("TOPLEFT", 8, y); y = y - 22
+    pre.name.border:ClearAllPoints(); pre.name.border:SetPoint("TOPLEFT", 8, y); y = y - 28
+    placeDD(pre.dd, 8, y)
+    pre.loadBtn:ClearAllPoints(); pre.loadBtn:SetPoint("TOPLEFT", 174, y - 4)
+    y = y - 30
+
+    Panel._bodyHeight = -y + 6
+    if WGB.MainWindow and WGB.MainWindow.SetSectionHeight then
+        WGB.MainWindow:SetSectionHeight("requirements", Panel._bodyHeight)
     end
 end
 
-local function setRefillShown(shown)
-    local fn = shown and "Show" or "Hide"
-    if widgets.bossLabel then widgets.bossLabel[fn](widgets.bossLabel) end
-    if widgets.bossDD then widgets.bossDD[fn](widgets.bossDD) end
+function Panel:GetBodyHeight()
+    return self._bodyHeight or 420
 end
 
 local function refreshComp()
@@ -417,8 +502,8 @@ local function refresh()
     widgets.fullEnch:SetChecked(r.requireFullEnchants)
     widgets.noPvP:SetChecked(r.noPvPGear)
     widgets.offSpec:SetChecked(r.flagOffSpecGear)
+    widgets.reqAchieve:SetChecked(r.requireAchievement)
     widgets.refill:SetChecked(r.refillMode)
-    setRefillShown(r.refillMode)
     if r.currentBoss and r.currentBoss ~= "" then
         UIDropDownMenu_SetText(widgets.bossDD, r.currentBoss)
     else
@@ -426,7 +511,7 @@ local function refresh()
     end
     widgets.advanced:SetChecked(r.advancedComp)
     refreshComp()
-    setAdvShown(r.advancedComp)
+    layoutBody()
 
     local pre = widgets.presets
     if pre then
@@ -442,9 +527,19 @@ local function refresh()
     end
 end
 
-WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()
+-- Idempotent build so the combined Setup tab can construct this panel regardless
+-- of WGB_PLAYER_LOGIN handler firing order (the event bus uses pairs(), which is
+-- unordered).
+function Panel:EnsureBuilt()
     build()
-    WGB.MainWindow:RegisterSection("requirements", L["REQUIREMENTS"], frame, 570)
+    self.frame = frame
+    refreshComp()
+    layoutBody()
+    return frame
+end
+
+WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()
+    Panel:EnsureBuilt()
     refresh()
 end)
 WGB.Events:Register("REQUIREMENTS_CHANGED", Panel, refresh)

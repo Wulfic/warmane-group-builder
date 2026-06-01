@@ -7,6 +7,12 @@ local Panel = {}
 WGB.LootRulesPanel = Panel
 local frame
 local w = {}
+local MAX_RESERVE_ROWS = 6
+
+local function placeDD(dd, x, yy)
+    dd:ClearAllPoints()
+    dd:SetPoint("TOPLEFT", x - 16, yy)
+end
 
 local function check(parent, label, x, y, onClick)
     local c = WGB.MakeCheckBox(parent, label, onClick)
@@ -39,7 +45,7 @@ local function build()
     if frame then return end
     frame = CreateFrame("Frame")
 
-    -- Loot system + master loot
+    -- Loot system + master loot (stacked for ~338 px half-panel)
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", 8, -8); title:SetText(L["LOOT_SYSTEM"] .. ":")
     w.lootSystem = dropdown(frame, 100, -4, 140, {
@@ -50,14 +56,14 @@ local function build()
         { label = L["LOOT_CUSTOM"], value = "Custom" },
     }, function(v) WGB.LootRules:Set("lootSystem", v) end)
 
-    w.masterLoot = check(frame, L["LOOT_MASTER"], 260, -8,
+    w.masterLoot = check(frame, L["LOOT_MASTER"], 8, -28,
         function(v) WGB.LootRules:Set("masterLoot", v) end)
 
-    w.advertiseSystem = check(frame, L["LOOT_ADVERTISE_SYSTEM"], 100, -28,
+    w.advertiseSystem = check(frame, L["LOOT_ADVERTISE_SYSTEM"], 8, -50,
         function(v) WGB.LootRules:Set("advertiseLootSystem", v) end)
 
-    -- Commodities
-    local y = -50
+    -- Commodities (build-time positions; refresh() repacks visible ones from y=-72)
+    local y = -72
     w.primo  = check(frame, L["LOOT_PRIMOS_RES"]      .. " (ICC)",      8, y,
         function(v) WGB.LootRules:Set("primoSaronite", v) end); y = y - 22
     w.shadow = check(frame, L["LOOT_SHADOWFROST_RES"] .. " (ICC SM)",  8, y,
@@ -69,22 +75,21 @@ local function build()
     w.valan  = check(frame, L["LOOT_VALANYR_RES"]     .. " (Ulduar)",   8, y,
         function(v) WGB.LootRules:Set("yoggFragment", v) end); y = y - 30
 
-    -- BoE rule
-    local boeLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    boeLbl:SetPoint("TOPLEFT", 8, y); boeLbl:SetText(L["LOOT_BOE_RULE"] .. ":")
+    -- BoE rule (positioned dynamically by lootLayout based on visible commodities)
+    w.boeLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    w.boeLbl:SetText(L["LOOT_BOE_RULE"] .. ":")
     w.boeRule = dropdown(frame, 100, y + 4, 140, {
         { label = L["LOOT_BOE_RAID"], value = "raid" },
         { label = L["LOOT_BOE_RES"],  value = "reserve" },
         { label = L["LOOT_BOE_OPEN"], value = "open" },
     }, function(v) WGB.LootRules:Set("boeRule", v) end)
-    y = y - 36
 
-    -- Custom reserves
-    local crLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    crLbl:SetPoint("TOPLEFT", 8, y); crLbl:SetText(L["LOOT_CUSTOM_RESERVES"]); y = y - 22
+    -- Custom reserves (positioned dynamically below the commodity section)
+    w.crLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    w.crLbl:SetText(L["LOOT_CUSTOM_RESERVES"])
 
-    w.crEdit = WGB.MakeInputBox(frame, 280, 24)
-    w.crEdit.border:SetPoint("TOPLEFT", 16, y)
+    w.crEdit = WGB.MakeInputBox(frame, 200, 24)
+    w.crEdit.border:SetPoint("TOPLEFT", 8, -252)
     w.crEdit:SetScript("OnReceiveDrag", function(self)
         local cursorType, _, link = GetCursorInfo()
         if cursorType == "item" and link then
@@ -109,25 +114,21 @@ local function build()
             w.crEdit:SetText("")
         end
     end)
-    y = y - 28
 
-    -- Reserve list (clickable rows; right-click a row to remove it).
-    local MAX_RESERVE_ROWS = 6
+    -- Reserve list rows (positioned dynamically by lootLayout)
     w.reserveRows = {}
     for i = 1, MAX_RESERVE_ROWS do
         local row = CreateFrame("Button", nil, frame)
-        row:SetSize(440, 16)
-        row:SetPoint("TOPLEFT", 16, y - (i - 1) * 16)
+        row:SetSize(300, 16)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         row.text:SetPoint("LEFT", 0, 0)
-        row.text:SetWidth(420); row.text:SetJustifyH("LEFT")
+        row.text:SetWidth(295); row.text:SetJustifyH("LEFT")
         row:SetScript("OnClick", function(self, button)
             if not self.reserveIndex then return end
             if button == "RightButton" then
                 WGB.LootRules:RemoveReservedItem(self.reserveIndex)
             elseif button == "LeftButton" then
-                -- Show item tooltip on left-click for sanity-checking the link.
                 if self.itemLink then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:SetHyperlink(self.itemLink)
@@ -140,25 +141,37 @@ local function build()
         w.reserveRows[i] = row
     end
     w.reserveOverflow = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    w.reserveOverflow:SetPoint("TOPLEFT", 16, y - MAX_RESERVE_ROWS * 16)
-    w.reserveOverflow:SetWidth(440); w.reserveOverflow:SetJustifyH("LEFT")
-    y = y - (MAX_RESERVE_ROWS + 1) * 16
+    w.reserveOverflow:SetWidth(300); w.reserveOverflow:SetJustifyH("LEFT")
 
     w.clearBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    w.clearBtn:SetPoint("TOPLEFT", 16, y); w.clearBtn:SetSize(120, 22)
-    w.clearBtn:SetText("Clear Reserves")
+    w.clearBtn:SetSize(120, 22); w.clearBtn:SetText("Clear Reserves")
     w.clearBtn:SetScript("OnClick", function() WGB.LootRules:ClearReservedItems() end)
+end
+
+-- Positions the BoE rule and custom-reserve block directly below the last
+-- visible commodity so there is no dead space when an instance only needs a
+-- couple of commodity reserves. cy is the next free y after the commodities;
+-- rowsToShow is the number of reserve rows currently displayed.
+local function lootLayout(cy, rowsToShow)
+    local y = cy - 6
+    w.boeLbl:ClearAllPoints(); w.boeLbl:SetPoint("TOPLEFT", 8, y)
+    placeDD(w.boeRule, 100, y + 4)
     y = y - 32
 
-    -- Preview (flows below the Clear Reserves button so the two never overlap)
-    local prev = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    prev:SetPoint("TOPLEFT", 8, y); prev:SetText(L["LOOT_PREVIEW"] .. ":")
-    y = y - 22
+    w.crLbl:ClearAllPoints(); w.crLbl:SetPoint("TOPLEFT", 8, y); y = y - 24
+    w.crEdit.border:ClearAllPoints(); w.crEdit.border:SetPoint("TOPLEFT", 8, y); y = y - 30
+    for i = 1, MAX_RESERVE_ROWS do
+        w.reserveRows[i]:ClearAllPoints()
+        w.reserveRows[i]:SetPoint("TOPLEFT", 8, y - (i - 1) * 16)
+    end
+    y = y - rowsToShow * 16 - 2
+    w.reserveOverflow:ClearAllPoints(); w.reserveOverflow:SetPoint("TOPLEFT", 8, y); y = y - 18
+    w.clearBtn:ClearAllPoints(); w.clearBtn:SetPoint("TOPLEFT", 8, y); y = y - 28
 
-    w.preview = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    w.preview:SetPoint("TOPLEFT", 8, y)
-    w.preview:SetWidth(500); w.preview:SetJustifyH("LEFT")
-    w.preview:SetNonSpaceWrap(true)
+    w._bodyHeight = -y + 6
+    if WGB.MainWindow and WGB.MainWindow.SetSectionHeight then
+        WGB.MainWindow:SetSectionHeight("lootrules", w._bodyHeight)
+    end
 end
 
 local function refresh()
@@ -194,7 +207,7 @@ local function refresh()
         { box = w.runed,  key = "runedOrb"         },
         { box = w.valan,  key = "yoggFragment"     },
     }
-    local cy = -50
+    local cy = -72
     for _, c in ipairs(commodities) do
         if rel[c.key] then
             c.box:ClearAllPoints()
@@ -206,10 +219,13 @@ local function refresh()
         end
     end
 
-    -- Reserve list
+    -- Reflow the BoE / reserves block directly below the commodities.
     local total = #lr.reservedItems
     local rows = w.reserveRows
     local shown = math.min(#rows, total)
+    lootLayout(cy, shown)
+
+    -- Reserve list
     for i = 1, shown do
         local r = lr.reservedItems[i]
         local row = rows[i]
@@ -230,13 +246,24 @@ local function refresh()
     else
         w.reserveOverflow:SetText("")
     end
+end
 
-    w.preview:SetText(lr:GetMessageFragment())
+-- Idempotent build so the combined Setup tab can construct this panel regardless
+-- of WGB_PLAYER_LOGIN handler firing order (the event bus uses pairs(), which is
+-- unordered).
+function Panel:EnsureBuilt()
+    build()
+    self.frame = frame
+    refresh()
+    return frame
+end
+
+function Panel:GetBodyHeight()
+    return w._bodyHeight or 470
 end
 
 WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()
-    build()
-    WGB.MainWindow:RegisterSection("lootrules", L["LOOT_RULES"], frame, 470)
+    Panel:EnsureBuilt()
     refresh()
 end)
 WGB.Events:Register("LOOT_RULES_CHANGED", Panel, refresh)

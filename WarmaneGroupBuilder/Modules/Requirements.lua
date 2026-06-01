@@ -16,6 +16,7 @@ local Requirements = {
     requireFullEnchants   = false,
     noPvPGear             = false,
     flagOffSpecGear       = true,    -- warn when a player wears gear for another role
+    requireAchievement    = false,   -- require the raid-completion achievement for the activity
     advancedComp          = false,   -- show the class/spec comp builder + advertise specs
     compThreshold         = 0.5,     -- start advertising specific specs once >= this fraction filled
     specRequirements      = {},     -- { {class="PALADIN", spec="Holy", count=1}, ... }
@@ -65,7 +66,8 @@ end
 
 function Requirements:SetFlag(flag, value)
     if flag == "requireFullGems" or flag == "requireFullEnchants"
-        or flag == "noPvPGear" or flag == "flagOffSpecGear" then
+        or flag == "noPvPGear" or flag == "flagOffSpecGear"
+        or flag == "requireAchievement" then
         self[flag] = value and true or false
         fire()
     end
@@ -132,6 +134,7 @@ function Requirements:SavePreset(name)
         requireFullEnchants = self.requireFullEnchants and true or false,
         noPvPGear           = self.noPvPGear and true or false,
         flagOffSpecGear     = self.flagOffSpecGear and true or false,
+        requireAchievement  = self.requireAchievement and true or false,
         advancedComp        = self.advancedComp and true or false,
         specRequirements    = specs,
     }
@@ -158,6 +161,8 @@ function Requirements:LoadPreset(name)
     else
         self.flagOffSpecGear = p.flagOffSpecGear and true or false
     end
+    -- Older presets predate this flag; default it OFF when absent.
+    self.requireAchievement  = p.requireAchievement and true or false
     self.advancedComp        = p.advancedComp and true or false
     self.specRequirements    = {}
     for _, sr in ipairs(p.specRequirements or {}) do
@@ -213,12 +218,27 @@ function Requirements:GetRemainingSpecs()
 end
 
 -- True when the advert should list the exact remaining class/spec slots instead
--- of broad roles. Enabling advanced comp is an explicit choice to recruit
--- specific specs, so honour it as soon as a comp exists (the earlier 0.5 fill
--- gate, computed off the separate generic role counts, meant a comp built
--- without role numbers was silently ignored by the advert).
+-- of broad roles. Two stage advert: while the group is still forming we want the
+-- widest reach, so we broadcast generic role counts ("2 Tanks/2 Heals/3 RDPS/3
+-- MDPS"). Once the raid has filled past compThreshold we switch to the exact
+-- remaining specs ("1 Resto Sham/1 Demo Lock") so the closing slots get the
+-- precise classes the comp wants — and the message stays short because only a
+-- few specs are ever left by then. The fill fraction is derived from the comp
+-- itself (sum of spec counts), NOT the separate generic role counts, so a comp
+-- built without role numbers still gates correctly.
 function Requirements:ShouldAdvertiseComp()
-    return self.advancedComp and #self.specRequirements > 0
+    if not (self.advancedComp and #self.specRequirements > 0) then return false end
+    local total, have = 0, 0
+    for _, sr in ipairs(self.specRequirements) do
+        local key  = (sr.class or "") .. "|" .. (sr.spec or "")
+        local want = sr.count or 1
+        local got  = self.specFilled[key] or 0
+        if got > want then got = want end
+        total = total + want
+        have  = have + got
+    end
+    if total <= 0 then return true end
+    return (have / total) >= (self.compThreshold or 0.5)
 end
 
 function Requirements:SetFilled(role, count)
@@ -282,6 +302,13 @@ function Requirements:ValidatePlayer(result)
             table.insert(parts, ("%s (%s)"):format(it.slotName, it.armorType))
         end
         table.insert(warnings, "Wrong armor type: " .. table.concat(parts, ", "))
+    end
+    -- Raid-completion achievement: only a CONFIRMED "not completed" is a warning.
+    -- An unknown result (no data yet / unmapped raid) must never reject a player.
+    if self.requireAchievement and WGB.RaidAchievements then
+        if WGB.RaidAchievements:HasCompletedCurrent(result.name) == false then
+            table.insert(warnings, L["NO_RAID_ACHIEVEMENT"])
+        end
     end
 
     return (#warnings == 0), warnings

@@ -9,14 +9,15 @@ local frame
 local rows = {}
 local header
 local scrollChild
+local refresh   -- forward declaration: build()'s Rescan button captures this
 
 -- Up to a full 40-man raid. Two columns of clickable rows live inside a scroll
 -- frame so the whole roster stays reachable.
 local MAX_ROWS    = 40
 local COLS        = 2
 local ROW_HEIGHT  = 18
-local COL_WIDTH   = 262   -- horizontal stride between the two columns
-local ROW_WIDTH   = 256   -- width of a single row's clickable/content area
+local COL_WIDTH   = 340   -- horizontal stride between the two columns
+local ROW_WIDTH   = 330   -- width of a single row's clickable/content area
 
 local function buildRow(parent, i)
     local row = CreateFrame("Button", nil, parent)
@@ -26,16 +27,16 @@ local function buildRow(parent, i)
     row:SetPoint("TOPLEFT", col * COL_WIDTH, -line * ROW_HEIGHT)
 
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    row.name:SetPoint("LEFT", 0, 0); row.name:SetWidth(95); row.name:SetJustifyH("LEFT")
+    row.name:SetPoint("LEFT", 0, 0); row.name:SetWidth(120); row.name:SetJustifyH("LEFT")
 
     row.role = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.role:SetPoint("LEFT", 96, 0); row.role:SetWidth(40); row.role:SetJustifyH("LEFT")
+    row.role:SetPoint("LEFT", 124, 0); row.role:SetWidth(50); row.role:SetJustifyH("LEFT")
 
     row.gs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.gs:SetPoint("LEFT", 138, 0); row.gs:SetWidth(45); row.gs:SetJustifyH("LEFT")
+    row.gs:SetPoint("LEFT", 178, 0); row.gs:SetWidth(50); row.gs:SetJustifyH("LEFT")
 
     row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.status:SetPoint("LEFT", 186, 0); row.status:SetWidth(70); row.status:SetJustifyH("LEFT")
+    row.status:SetPoint("LEFT", 232, 0); row.status:SetWidth(95); row.status:SetJustifyH("LEFT")
 
     row:SetScript("OnClick", function(self)
         local name = self.playerName
@@ -54,6 +55,25 @@ local function build()
     header = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     header:SetPoint("TOPLEFT", 8, -8)
 
+    -- Rescan button: re-inspect everyone not yet approved (handles misread
+    -- GearScore or a player who swapped gear sets after the first scan).
+    local rescan = CreateFrame("Button", "WGBGroupRescanButton", frame, "UIPanelButtonTemplate")
+    rescan:SetSize(80, 22)
+    rescan:SetPoint("TOPRIGHT", -26, -6)
+    rescan:SetText(L["RESCAN"])
+    rescan:SetScript("OnClick", function()
+        if WGB.Inspection and WGB.Inspection.RescanUnapproved then
+            WGB.Inspection:RescanUnapproved()
+            refresh()
+        end
+    end)
+    rescan:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText(L["RESCAN_TOOLTIP"])
+        GameTooltip:Show()
+    end)
+    rescan:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     -- Scroll frame holds all rows; -26 on the right keeps the template scrollbar
     -- inside the panel rather than spilling past the edge.
     local scroll = CreateFrame("ScrollFrame", "WGBGroupScroll", frame, "UIPanelScrollFrameTemplate")
@@ -69,11 +89,16 @@ local function build()
     end
 end
 
-local function refresh()
+refresh = function()
     if not frame then return end
     local r = WGB.Requirements
-    header:SetText(("%s%s Tanks %d/%d  Heals %d/%d  RDPS %d/%d  MDPS %d/%d"):format(
+
+    local total = 0
+    for _ in WGB.IterateGroup() do total = total + 1 end
+
+    header:SetText(("%s%s Players %d  Tanks %d/%d  Heals %d/%d  RDPS %d/%d  MDPS %d/%d"):format(
         WGB.COLOR.ORANGE, "Roster:" .. WGB.COLOR.RESET,
+        total,
         r.filled.tank or 0, r.roles.tank or 0,
         r.filled.heal or 0, r.roles.heal or 0,
         r.filled.rdps or 0, r.roles.rdps or 0,
@@ -115,6 +140,7 @@ WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()
 end)
 WGB.Events:Register("INSPECTION_COMPLETE", Panel, refresh)
 WGB.Events:Register("INSPECTION_TIMEOUT",  Panel, refresh)
+WGB.Events:Register("ACHIEVEMENT_CHECK_COMPLETE", Panel, refresh)
 WGB.Events:Register("ROLE_FILLED",          Panel, refresh)
 WGB.Events:Register("PLAYER_APPROVED",      Panel, refresh)
 WGB.Events:Register("PLAYER_KICKED",        Panel, refresh)

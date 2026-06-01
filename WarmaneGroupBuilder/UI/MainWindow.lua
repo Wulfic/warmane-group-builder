@@ -26,7 +26,7 @@ local function buildFrame()
         tile = true, tileSize = 32, edgeSize = 32,
         insets = { left = 11, right = 12, top = 12, bottom = 11 },
     })
-    f:SetSize(math.max(WGB_Settings.mainWindow.width or 580, 580),
+    f:SetSize(math.max(WGB_Settings.mainWindow.width or 760, 760),
               math.max(WGB_Settings.mainWindow.height or 620, 620))
     f:SetPoint(WGB_Settings.mainWindow.point or "CENTER",
                WGB_Settings.mainWindow.x or 0, WGB_Settings.mainWindow.y or 0)
@@ -48,6 +48,27 @@ local function buildFrame()
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", 0, -16)
     title:SetText("Warmane Group Builder v" .. WGB.VERSION)
+
+    -- Master enable switch (top-left corner). Unchecking suspends all
+    -- automation (auto-invite whispers + auto-repeat advertising).
+    local enableCheck = WGB.MakeCheckBox(f, L["MASTER_ENABLED"], function(on)
+        WGB.SetEnabled(on)
+    end)
+    enableCheck:SetPoint("TOPLEFT", 14, -12)
+    enableCheck:SetChecked(WGB.IsEnabled())
+    enableCheck:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["MASTER_ENABLED_TOOLTIP"], nil, nil, nil, nil, true)
+        GameTooltip:Show()
+    end)
+    enableCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    f.enableCheck = enableCheck
+
+    -- Keep the checkbox in sync if the master switch is toggled elsewhere
+    -- (e.g. /wgb start|stop or another code path).
+    WGB.Events:Register("WGB_ENABLED_CHANGED", enableCheck, function(self, on)
+        self:SetChecked(on)
+    end)
 
     -- Close button
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -135,12 +156,59 @@ function MainWindow:RegisterTab(id, label, frame)
 end
 
 -- Width of a stacked section's body inside the combined scroll child. Panels
--- draw up to ~508px wide, so 510 keeps everything inside the child (which is
--- 520 wide and fits the scroll viewport without a horizontal scrollbar).
-local SECTION_WIDTH = 510
+-- draw up to ~684px wide, so 690 keeps everything inside the child (which is
+-- 700 wide and fits the scroll viewport without a horizontal scrollbar).
+local SECTION_WIDTH = 690
 
--- Lazily build the single scrollable tab that hosts the stacked config/advert/
--- loot/requirements "sections". Registers itself as a normal tab once.
+-- Width of each half-panel when two sections share a row.  Each half is 338 px
+-- wide with a 10 px gap, totalling 338+10+338 = 686 inside the 700-wide child.
+local HALF_W   = 338
+local RIGHT_X  = 4 + HALF_W + 10   -- = 352
+local HDR_GAP  = 28   -- header label + divider band above each section body
+local ROW_GAP  = 14   -- trailing gap below a section row before the next
+
+-- Re-flow all registered rows top-to-bottom.  Called on every (un)registration
+-- and whenever a section's height changes (e.g. Requirements Advanced toggle),
+-- so collapsing a section reclaims its vertical space instead of leaving a gap.
+local function layoutCombined(c)
+    local child = c.child
+    local y = -4
+    for _, row in ipairs(c.rows) do
+        local h = row.height
+        if row.kind == "pair" then
+            h = math.max(row.heightA or 0, row.heightB or 0)
+
+            row.hdrA:ClearAllPoints()
+            row.hdrA:SetPoint("TOPLEFT", child, "TOPLEFT", 4, y - 4)
+            row.lineA:ClearAllPoints()
+            row.lineA:SetPoint("TOPLEFT", child, "TOPLEFT", 4, y - 26)
+            row.frameA:ClearAllPoints()
+            row.frameA:SetPoint("TOPLEFT", child, "TOPLEFT", 4, y - HDR_GAP)
+            row.frameA:SetHeight(h)
+
+            row.hdrB:ClearAllPoints()
+            row.hdrB:SetPoint("TOPLEFT", child, "TOPLEFT", RIGHT_X, y - 4)
+            row.lineB:ClearAllPoints()
+            row.lineB:SetPoint("TOPLEFT", child, "TOPLEFT", RIGHT_X, y - 26)
+            row.frameB:ClearAllPoints()
+            row.frameB:SetPoint("TOPLEFT", child, "TOPLEFT", RIGHT_X, y - HDR_GAP)
+            row.frameB:SetHeight(h)
+        else
+            row.hdr:ClearAllPoints()
+            row.hdr:SetPoint("TOPLEFT", child, "TOPLEFT", 4, y - 4)
+            row.line:ClearAllPoints()
+            row.line:SetPoint("TOPLEFT", child, "TOPLEFT", 4, y - 26)
+            row.frame:ClearAllPoints()
+            row.frame:SetPoint("TOPLEFT", child, "TOPLEFT", 4, y - HDR_GAP)
+            row.frame:SetHeight(h)
+        end
+        y = y - HDR_GAP - h - ROW_GAP
+    end
+    child:SetHeight(-y + 10)
+end
+
+-- Lazily build the single scrollable tab that hosts the config/advert/loot/
+-- requirements "sections". Registers itself as a normal tab once.
 function MainWindow:EnsureCombinedTab()
     if self.combined then return self.combined end
     if not self.frame then self.frame = buildFrame() end
@@ -156,39 +224,68 @@ function MainWindow:EnsureCombinedTab()
     child:SetSize(SECTION_WIDTH + 10, 10)
     scroll:SetScrollChild(child)
 
-    self.combined = { outer = outer, scroll = scroll, child = child, y = -4, sections = {} }
+    self.combined = { outer = outer, scroll = scroll, child = child, rows = {}, byId = {} }
     self:RegisterTab("setup", L["SETUP"], outer)
     return self.combined
 end
 
--- Add a panel frame as a stacked section in the combined scroll tab. Each
--- section gets a header label and a divider, and is given a fixed height so the
--- following section flows beneath it.
-function MainWindow:RegisterSection(id, label, frame, height)
-    local c = self:EnsureCombinedTab()
-    local child = c.child
-
+local function makeHeader(child, label)
     local hdr = child:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    hdr:SetPoint("TOPLEFT", child, "TOPLEFT", 4, c.y - 4)
     hdr:SetText(label)
-
     local line = child:CreateTexture(nil, "ARTWORK")
     line:SetTexture(0.5, 0.5, 0.5, 0.8)
+    line:SetSize(HALF_W, 1)
+    return hdr, line
+end
+
+-- Add a single full-width panel frame as a stacked section.
+function MainWindow:RegisterSection(id, label, frame, height)
+    local c = self:EnsureCombinedTab()
+    local hdr, line = makeHeader(c.child, label)
     line:SetSize(SECTION_WIDTH, 1)
-    line:SetPoint("TOPLEFT", child, "TOPLEFT", 4, c.y - 26)
-
-    frame:SetParent(child)
-    frame:ClearAllPoints()
-    frame:SetPoint("TOPLEFT", child, "TOPLEFT", 4, c.y - 32)
+    frame:SetParent(c.child)
     frame:SetWidth(SECTION_WIDTH)
-    frame:SetHeight(height)
     frame:Show()
+    local row = { kind = "single", id = id, hdr = hdr, line = line, frame = frame, height = height }
+    table.insert(c.rows, row)
+    c.byId[id] = row
+    layoutCombined(c)
+end
 
-    -- header (32) + body + trailing gap (24)
-    c.y = c.y - 32 - height - 24
-    child:SetHeight(-c.y + 10)
+-- Place two panel frames side-by-side on the same scroll row.  Each section
+-- gets its own header label and 1px divider; the row height is the taller of
+-- the two supplied heights and re-flows when either changes.
+function MainWindow:RegisterSectionPair(idA, labelA, frameA, heightA, idB, labelB, frameB, heightB)
+    local c = self:EnsureCombinedTab()
+    local hdrA, lineA = makeHeader(c.child, labelA)
+    local hdrB, lineB = makeHeader(c.child, labelB)
+    frameA:SetParent(c.child); frameA:SetWidth(HALF_W); frameA:Show()
+    frameB:SetParent(c.child); frameB:SetWidth(HALF_W); frameB:Show()
+    local row = {
+        kind = "pair",
+        idA = idA, hdrA = hdrA, lineA = lineA, frameA = frameA, heightA = heightA,
+        idB = idB, hdrB = hdrB, lineB = lineB, frameB = frameB, heightB = heightB,
+    }
+    table.insert(c.rows, row)
+    c.byId[idA] = row
+    c.byId[idB] = row
+    layoutCombined(c)
+end
 
-    table.insert(c.sections, { id = id, label = label, frame = frame })
+-- Change a registered section's body height and re-flow the whole tab so the
+-- space below it grows/shrinks to match (used for the Requirements Advanced
+-- expand/collapse).
+function MainWindow:SetSectionHeight(id, height)
+    local c = self.combined
+    if not c then return end
+    local row = c.byId[id]
+    if not row then return end
+    if row.kind == "pair" then
+        if row.idA == id then row.heightA = height else row.heightB = height end
+    else
+        row.height = height
+    end
+    layoutCombined(c)
 end
 
 function MainWindow:OpenTab(id)

@@ -41,8 +41,9 @@ local ENCHANTABLE_SLOTS = {
     [10] = "Hands",
     [7]  = "Legs",
     [8]  = "Feet",
-    [11] = "Ring 1",
-    [12] = "Ring 2",
+    -- Rings (11/12) intentionally excluded: ring enchants require the wearer to
+    -- personally have the Enchanting profession, so an un-enchanted ring is NOT
+    -- a gear-quality problem for most players and produced false warnings.
     [15] = "Cloak",
     [16] = "Main Hand",
     -- Off Hand (17) intentionally excluded: shields/off-hand frills/held items
@@ -86,23 +87,40 @@ local function hasEnchant(itemLink)
     return enchantId ~= nil and enchantId ~= "0" and enchantId ~= ""
 end
 
-local function countSocketsAndGems(itemLink)
-    if not itemLink then return 0, 0 end
-    local sockets, gems = 0, 0
-    -- Sockets: parse via tooltip stat scan would be heavy; cheap heuristic via
-    -- GetItemStats which returns EMPTY_SOCKET_* counts.
-    local stats = GetItemStats and GetItemStats(itemLink) or nil
-    if stats then
-        for k, v in pairs(stats) do
-            if k:find("EMPTY_SOCKET", 1, true) then sockets = sockets + (v or 0) end
+-- Count UNFILLED sockets on an item via a hidden scanning tooltip.
+-- The previous approach (GetItemStats EMPTY_SOCKET total minus GetItemGem count)
+-- mis-read inspected players badly: GetItemGem returns nil for an inspected
+-- unit's gems whenever the gem item isn't in the local cache, so every socketed
+-- slot looked empty -> a fully-gemmed paladin reported ~17 "missing gems".
+-- An inspected unit's item link DOES carry its socketed gem IDs, so a tooltip
+-- built from that link renders the real gem stat lines for filled sockets and a
+-- plain EMPTY_SOCKET_* line ONLY for sockets that are actually empty. Counting
+-- those lines is class-agnostic and cache-independent.
+local gemScanTip
+local EMPTY_SOCKET_STRINGS = {
+    EMPTY_SOCKET_RED, EMPTY_SOCKET_YELLOW, EMPTY_SOCKET_BLUE,
+    EMPTY_SOCKET_META, EMPTY_SOCKET_PRISMATIC,
+}
+local function countMissingGems(itemLink)
+    if not itemLink then return 0 end
+    if not gemScanTip then
+        gemScanTip = CreateFrame("GameTooltip", "WGBGemScanTooltip", nil, "GameTooltipTemplate")
+        gemScanTip:SetOwner(WorldFrame, "ANCHOR_NONE")
+    end
+    gemScanTip:ClearLines()
+    local ok = pcall(gemScanTip.SetHyperlink, gemScanTip, itemLink)
+    if not ok then return 0 end
+    local missing = 0
+    for i = 1, gemScanTip:NumLines() do
+        local fs = _G["WGBGemScanTooltipTextLeft" .. i]
+        local text = fs and fs:GetText()
+        if text then
+            for _, s in ipairs(EMPTY_SOCKET_STRINGS) do
+                if s and text == s then missing = missing + 1; break end
+            end
         end
     end
-    -- Gems present: check the 3 gem indices.
-    for i = 1, 3 do
-        local _, gemLink = GetItemGem(itemLink, i)
-        if gemLink then gems = gems + 1 end
-    end
-    return sockets, gems
+    return missing
 end
 
 local function detectPvP(itemLink)
@@ -154,10 +172,7 @@ local function gatherResult(unit, inspectFlag)
         local link = GetInventoryItemLink(unit, slot)
         if link then
             result.slots[slot] = link
-            local sockets, gems = countSocketsAndGems(link)
-            if sockets > gems then
-                result.missingGems = result.missingGems + (sockets - gems)
-            end
+            result.missingGems = result.missingGems + countMissingGems(link)
             if detectPvP(link) then result.pvpItemCount = result.pvpItemCount + 1 end
             if ENCHANTABLE_SLOTS[slot] then
                 -- The Ranged slot (18) only holds an enchantable weapon for
@@ -174,21 +189,38 @@ local function gatherResult(unit, inspectFlag)
     end
 
     -- Spec via talent tabs (inspect-mode signature; 2nd arg true)
-    local maxPoints, primaryIdx = -1, 1
+    local maxPoints, primaryIdx, primaryTab, primaryIcon = -1, 1, nil, nil
     for i = 1, 3 do
         local tabName, icon, points = GetTalentTabInfo(i, inspectFlag)
         result.talentPoints[i] = points or 0
         if points and points > maxPoints then
             maxPoints = points
             primaryIdx = i
-            result.spec = tabName
-            result.specIcon = icon
+            primaryTab = tabName
+            primaryIcon = icon
         end
+    end
+    -- Normalize the raw talent-tab name to a canonical spec and confirm it
+    -- belongs to THIS unit's class. If it doesn't (e.g. a Shaman reading a Death
+    -- Knight's "Blood" tree), the inspect talent cache is stale — see
+    -- WGB.NormalizeSpec — so flag it and DON'T store the wrong spec. The listener
+    -- retries the inspect for stale results.
+    local canonical = WGB.NormalizeSpec and WGB.NormalizeSpec(class, primaryTab) or primaryTab
+    if primaryTab and maxPoints > 0 and not canonical then
+        result.talentStale = true
+        result.spec = nil
+        result.specIcon = nil
+    else
+        result.spec = canonical
+        result.specIcon = primaryIcon
     end
     -- A "real" 3.3.5a spec needs >=51 points to reach the capstone of one tree;
     -- below that the player is hybrid/leveling/respeccing and the spec name we
     -- report is just "the tree they happened to put the most points in".
-    if maxPoints >= 51 then
+    if result.talentStale then
+        result.dominantSpec = false
+        result.specConfidence = "unknown"
+    elseif maxPoints >= 51 then
         result.dominantSpec = true
         result.specConfidence = "high"
     elseif maxPoints > 0 then
@@ -360,6 +392,26 @@ function Inspection:Clear(playerName)
     end
 end
 
+-- Re-inspect everyone in the group who has NOT been approved yet. Used by the
+-- Group Status "Rescan" button: a misread GearScore or a player who just swapped
+-- gear sets can throw off the first scan, so this drops their cached result and
+-- force-queues a fresh inspect. Approved players are left untouched. Our own row
+-- is refreshed locally via InspectSelf (can't NotifyInspect yourself).
+function Inspection:RescanUnapproved()
+    local approved = (WGB.GroupManager and WGB.GroupManager.approved) or {}
+    local me = UnitName("player")
+    for unit, name in WGB.IterateGroup() do
+        if name == me then
+            self:InspectSelf()
+        elseif not approved[name] then
+            self._staleRetries = self._staleRetries or {}
+            self._staleRetries[name] = nil
+            self.results[name] = nil
+            self:Enqueue(unit, true)
+        end
+    end
+end
+
 local function stopTimerIfIdle()
     if Inspection.pending then return end
     if #Inspection.queue > 0 then return end
@@ -485,8 +537,28 @@ listener:SetScript("OnEvent", function(_, event, guid)
     ClearInspectPlayer()
     Inspection.pending = nil
     if ok then
-        Inspection.results[p.name] = result
-        WGB.Events:Fire("INSPECTION_COMPLETE", p.name, result)
+        -- Stale talent cache (Shaman read as a DK's Blood spec, etc.): the
+        -- talents belonged to a previously-inspected unit. Retry a couple of
+        -- times after a short settle delay so the client can load THIS unit's
+        -- talents, rather than storing a bogus spec.
+        Inspection._staleRetries = Inspection._staleRetries or {}
+        if result.talentStale and (Inspection._staleRetries[p.name] or 0) < 3 then
+            Inspection._staleRetries[p.name] = (Inspection._staleRetries[p.name] or 0) + 1
+            WGB.Debug(("Stale inspect talents for %s; retry %d"):format(
+                p.name, Inspection._staleRetries[p.name]))
+            local n = p.name
+            WGB.After(0.6, function()
+                local u = resolveUnit(n)
+                if u and UnitExists(u) then
+                    Inspection.results[n] = nil
+                    Inspection:Enqueue(u, true)
+                end
+            end)
+        else
+            Inspection._staleRetries[p.name] = nil
+            Inspection.results[p.name] = result
+            WGB.Events:Fire("INSPECTION_COMPLETE", p.name, result)
+        end
     else
         WGB.Warn(("Inspect gather failed for %s: %s"):format(tostring(p.name), tostring(result)))
         WGB.Events:Fire("INSPECTION_TIMEOUT", p.name)

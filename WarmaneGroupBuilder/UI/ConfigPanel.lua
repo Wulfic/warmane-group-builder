@@ -53,27 +53,31 @@ local function build()
     if frame then return end
     frame = CreateFrame("Frame")
 
-    local lbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    lbl:SetPoint("TOPLEFT", 8, -8); lbl:SetText(L["WHISPER_RESPONSE"] .. " ({player} = invitee name):")
-    -- Width leaves room on the right for the UIPanelScrollFrameTemplate scrollbar.
-    w.whisper = multiEdit(frame, 8, -32, 480, 60,
+    -- Single-column layout for the ~338 px half-panel width.
+    local lbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    lbl:SetPoint("TOPLEFT", 8, -8)
+    lbl:SetWidth(320); lbl:SetJustifyH("LEFT")
+    lbl:SetText(L["WHISPER_RESPONSE"] .. " ({player} = invitee name):")
+    w.whisper = multiEdit(frame, 8, -28, 306, 64,
         function(t) WGB_Settings.whisperResponse = t end)
 
     local kwLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    kwLbl:SetPoint("TOPLEFT", 8, -110); kwLbl:SetText(L["AUTO_INVITE_KEYWORD"] .. " (blank = any whisper):")
-    w.kw = WGB.MakeInputBox(frame, 260, 22)
-    w.kw.border:SetPoint("TOPLEFT", 8, -132)
+    kwLbl:SetPoint("TOPLEFT", 8, -98); kwLbl:SetText(L["AUTO_INVITE_KEYWORD"] .. ":")
+    w.kw = WGB.MakeInputBox(frame, 190, 22)
+    w.kw.border:SetPoint("TOPLEFT", 8, -116)
     w.kw:SetMaxLetters(40)
     w.kw:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     w.kw:SetScript("OnEditFocusLost", function(self) WGB_Settings.autoInviteKeyword = self:GetText() or "" end)
+    local kwHint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    kwHint:SetPoint("TOPLEFT", 8, -138); kwHint:SetText("(blank = any whisper)")
 
-    w.minimap = check(frame, L["SHOW_MINIMAP"], 8, -170, function(v)
+    w.minimap = check(frame, L["SHOW_MINIMAP"], 8, -158, function(v)
         WGB_Settings.showMinimap = v
         if WGB.MinimapButton then WGB.MinimapButton:SetShown(v) end
     end)
 
     w.reset = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    w.reset:SetPoint("BOTTOMLEFT", 8, 8); w.reset:SetSize(140, 24)
+    w.reset:SetPoint("TOPLEFT", 8, -184); w.reset:SetSize(140, 24)
     w.reset:SetText(L["RESET_DEFAULTS"])
     w.reset:SetScript("OnClick", function() StaticPopup_Show("WGB_RESET_CONFIRM") end)
 end
@@ -88,6 +92,20 @@ end
 
 WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()
     build()
-    WGB.MainWindow:RegisterSection("config", L["CONFIG"], frame, 230)
+    Panel.frame = frame
     refresh()
+    -- The event bus fires WGB_PLAYER_LOGIN handlers in pairs() order (unordered),
+    -- so the other panels may not be built yet. Build them explicitly (idempotent)
+    -- before laying out the side-by-side pairs for the combined Setup tab.
+    local advFrame  = WGB.AdvertPanel:EnsureBuilt()
+    local lootFrame = WGB.LootRulesPanel:EnsureBuilt()
+    local reqFrame  = WGB.RequirementsPanel:EnsureBuilt()
+    WGB.MainWindow:RegisterSectionPair(
+        "config",   L["CONFIG"],        frame,     214,
+        "advert",   L["ADVERTISEMENT"], advFrame,  300
+    )
+    WGB.MainWindow:RegisterSectionPair(
+        "lootrules",    L["LOOT_RULES"],    lootFrame, WGB.LootRulesPanel:GetBodyHeight(),
+        "requirements", L["REQUIREMENTS"],  reqFrame,  WGB.RequirementsPanel:GetBodyHeight()
+    )
 end)

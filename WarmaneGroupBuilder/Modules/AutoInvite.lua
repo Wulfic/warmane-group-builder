@@ -60,6 +60,7 @@ end
 
 function AutoInvite:_onWhisper(text, sender)
     if not self.enabled then return end
+    if not WGB.IsEnabled() then return end
     if not sender or sender == "" then return end
     text = text or ""
     -- Strip realm suffix if present
@@ -75,6 +76,7 @@ end
 
 function AutoInvite:TryInvite(name)
     if not self.enabled then return false, "disabled" end
+    if not WGB.IsEnabled() then return false, "disabled" end
     if WGB.Requirements and WGB.Requirements:IsFull() then
         WGB.Events:Fire("GROUP_FULL")
         return false, "full"
@@ -115,7 +117,19 @@ function AutoInvite:SendResponse(name)
 end
 
 WGB.Events:Register("WGB_PLAYER_LOGIN", AutoInvite, function(self)
+    if not WGB.IsEnabled() then return end
     if WGB_Settings and WGB_Settings.autoInviteEnabled then
         self:SetEnabled(true)
+    end
+end)
+
+-- Master enable switch: suspend the whisper listener when the addon is
+-- disabled, and restore it (if the user had auto-invite on) when re-enabled.
+-- Does not touch the autoInviteEnabled pref so the user's choice is preserved.
+WGB.Events:Register("WGB_ENABLED_CHANGED", AutoInvite, function(self, on)
+    if on then
+        if WGB_Settings and WGB_Settings.autoInviteEnabled then self:_start() end
+    else
+        self:_stop()
     end
 end)

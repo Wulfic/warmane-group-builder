@@ -10,6 +10,8 @@ L["WGB"]                          = "WGB"
 L["Warmane Group Builder"]        = "Warmane Group Builder"
 L["Loaded"]                       = "loaded"
 L["Version"]                      = "Version"
+L["MASTER_ENABLED"]               = "Enabled"
+L["MASTER_ENABLED_TOOLTIP"]       = "Master switch. When unchecked, the addon stops all automation (auto-invite whispers and auto-repeat advertising)."
 
 -- Slash command help
 L["SLASH_HELP_HEADER"]            = "|cFFFF8000Warmane Group Builder|r commands:"
@@ -70,6 +72,8 @@ L["ON_BOSS"]                      = "on %s"
 L["FULL_GEMS"]                    = "Full Gems Required"
 L["FULL_ENCHANTS"]                = "Full Enchants Required"
 L["NO_PVP_GEAR"]                  = "No PvP Gear"
+L["REQUIRE_ACHIEVEMENT"]          = "Achievement Req"
+L["ADVERT_ACHIEVEMENT"]           = "Achiev Req"
 L["SPEC_REQUIREMENTS"]            = "Spec Requirements"
 L["ADVANCED_COMP"]                = "Advanced (specific class/spec comp)"
 L["CLASS"]                        = "Class"
@@ -108,9 +112,17 @@ L["CHAN_ROTATE_HINT"]             = "When multiple channels are selected, each s
 
 -- Tabs
 L["SETUP"]                        = "Setup"
+L["ABOUT"]                        = "About"
+L["ABOUT_BY"]                     = "By Wulfic"
+L["ABOUT_PROJECT"]                = "GitHub Project"
+L["ABOUT_BUG"]                    = "Found a bug?"
+L["ABOUT_BUG_LABEL"]              = "Report it on the issue tracker:"
+L["ABOUT_COPY_HINT"]              = "Click a link and press Ctrl+C to copy."
 
 -- Group / Inspection
 L["GROUP_STATUS"]                 = "Group Status"
+L["RESCAN"]                       = "Rescan"
+L["RESCAN_TOOLTIP"]               = "Re-inspect everyone not yet approved"
 L["INSPECTING"]                   = "Inspecting %s..."
 L["INSPECT_TIMEOUT"]              = "Inspect timed out for %s"
 L["APPROVE"]                      = "Approve"
@@ -124,6 +136,9 @@ L["OFFSPEC_GEAR"]                 = "Off-spec gear: %s"
 L["OFFSPEC_GEAR_OK"]              = "No off-spec gear"
 L["FLAG_OFFSPEC_GEAR"]            = "Flag off-spec gear"
 L["WRONG_ARMOR"]                  = "Wrong armor type: %s"
+L["NO_RAID_ACHIEVEMENT"]          = "Missing raid completion achievement"
+L["HAS_RAID_ACHIEVEMENT"]         = "Raid achievement completed"
+L["ACHIEVEMENT_UNKNOWN"]          = "Raid achievement: checking..."
 
 -- Config
 L["CONFIG"]                       = "Config"

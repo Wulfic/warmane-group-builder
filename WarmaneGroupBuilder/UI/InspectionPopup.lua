@@ -59,6 +59,9 @@ local function build()
     f.armor:SetWidth(330); f.armor:SetJustifyH("LEFT")
     f.armor:SetNonSpaceWrap(true)
 
+    f.achieve = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.achieve:SetPoint("TOPLEFT", 16, -232)
+    f.achieve:SetWidth(330); f.achieve:SetJustifyH("LEFT")
     -- Buttons
     local approve = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     approve:SetPoint("BOTTOMLEFT", 16, 16); approve:SetSize(90, 24); approve:SetText(L["APPROVE"])
@@ -158,6 +161,21 @@ function Popup:Show(name, result)
         f.armor:SetText("")
     end
 
+    -- Raid-completion achievement (only shown when the gate is enabled).
+    if WGB.Requirements and WGB.Requirements.requireAchievement
+        and WGB.GetRaidAchievement and WGB.GetRaidAchievement(WGB.Requirements.activity) then
+        local done = WGB.RaidAchievements and WGB.RaidAchievements:HasCompletedCurrent(name)
+        if done == true then
+            f.achieve:SetText(WGB.Color(WGB.COLOR.GREEN, L["HAS_RAID_ACHIEVEMENT"]))
+        elseif done == false then
+            f.achieve:SetText(WGB.Color(WGB.COLOR.RED, L["NO_RAID_ACHIEVEMENT"]))
+        else
+            f.achieve:SetText(WGB.Color(WGB.COLOR.GREY, L["ACHIEVEMENT_UNKNOWN"]))
+        end
+    else
+        f.achieve:SetText("")
+    end
+
     f:Show()
 end
 
@@ -178,5 +196,12 @@ WGB.Events:Register("INSPECTION_COMPLETE", Popup, function(_, name, result)
     -- (e.g. a deferred GearScore arriving after the popup was opened).
     if Popup.frame and Popup.frame:IsShown() and Popup.current and Popup.current.name == name then
         Popup:Show(name, result)
+    end
+end)
+
+-- The achievement comparison for the open player just resolved: refresh in place.
+WGB.Events:Register("ACHIEVEMENT_CHECK_COMPLETE", Popup, function(_, name)
+    if Popup.frame and Popup.frame:IsShown() and Popup.current and Popup.current.name == name then
+        Popup:Show(name, Popup.current.result)
     end
 end)
