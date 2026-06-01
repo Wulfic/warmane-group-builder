@@ -212,13 +212,13 @@ function Requirements:GetRemainingSpecs()
     return out
 end
 
--- True once the raid is filled enough that broad role advertising should give
--- way to advertising the exact remaining class/spec slots.
+-- True when the advert should list the exact remaining class/spec slots instead
+-- of broad roles. Enabling advanced comp is an explicit choice to recruit
+-- specific specs, so honour it as soon as a comp exists (the earlier 0.5 fill
+-- gate, computed off the separate generic role counts, meant a comp built
+-- without role numbers was silently ignored by the advert).
 function Requirements:ShouldAdvertiseComp()
-    if not self.advancedComp or #self.specRequirements == 0 then return false end
-    local total = self:GetTotalSlots()
-    if total <= 0 then return false end
-    return (self:GetTotalFilled() / total) >= (self.compThreshold or 0.5)
+    return self.advancedComp and #self.specRequirements > 0
 end
 
 function Requirements:SetFilled(role, count)

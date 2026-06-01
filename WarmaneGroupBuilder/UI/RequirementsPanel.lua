@@ -444,7 +444,7 @@ end
 
 WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()
     build()
-    WGB.MainWindow:RegisterTab("requirements", L["REQUIREMENTS"], frame)
+    WGB.MainWindow:RegisterSection("requirements", L["REQUIREMENTS"], frame, 570)
     refresh()
 end)
 WGB.Events:Register("REQUIREMENTS_CHANGED", Panel, refresh)

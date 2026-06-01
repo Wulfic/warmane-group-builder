@@ -236,7 +236,7 @@ end
 
 WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()
     build()
-    WGB.MainWindow:RegisterTab("lootrules", L["LOOT_RULES"], frame)
+    WGB.MainWindow:RegisterSection("lootrules", L["LOOT_RULES"], frame, 470)
     refresh()
 end)
 WGB.Events:Register("LOOT_RULES_CHANGED", Panel, refresh)

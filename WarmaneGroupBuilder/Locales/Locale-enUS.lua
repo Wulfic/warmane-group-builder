@@ -106,6 +106,9 @@ L["CHAN_SAY"]                     = "Say"
 L["CHAN_GUILD"]                   = "Guild"
 L["CHAN_ROTATE_HINT"]             = "When multiple channels are selected, each send rotates to the next."
 
+-- Tabs
+L["SETUP"]                        = "Setup"
+
 -- Group / Inspection
 L["GROUP_STATUS"]                 = "Group Status"
 L["INSPECTING"]                   = "Inspecting %s..."

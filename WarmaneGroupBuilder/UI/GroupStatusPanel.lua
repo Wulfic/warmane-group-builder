@@ -8,8 +8,44 @@ WGB.GroupStatusPanel = Panel
 local frame
 local rows = {}
 local header
+local scrollChild
 
-local MAX_ROWS = 25
+-- Up to a full 40-man raid. Two columns of clickable rows live inside a scroll
+-- frame so the whole roster stays reachable.
+local MAX_ROWS    = 40
+local COLS        = 2
+local ROW_HEIGHT  = 18
+local COL_WIDTH   = 262   -- horizontal stride between the two columns
+local ROW_WIDTH   = 256   -- width of a single row's clickable/content area
+
+local function buildRow(parent, i)
+    local row = CreateFrame("Button", nil, parent)
+    row:SetSize(ROW_WIDTH, ROW_HEIGHT)
+    local col  = (i - 1) % COLS
+    local line = math.floor((i - 1) / COLS)
+    row:SetPoint("TOPLEFT", col * COL_WIDTH, -line * ROW_HEIGHT)
+
+    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.name:SetPoint("LEFT", 0, 0); row.name:SetWidth(95); row.name:SetJustifyH("LEFT")
+
+    row.role = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.role:SetPoint("LEFT", 96, 0); row.role:SetWidth(40); row.role:SetJustifyH("LEFT")
+
+    row.gs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.gs:SetPoint("LEFT", 138, 0); row.gs:SetWidth(45); row.gs:SetJustifyH("LEFT")
+
+    row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.status:SetPoint("LEFT", 186, 0); row.status:SetWidth(70); row.status:SetJustifyH("LEFT")
+
+    row:SetScript("OnClick", function(self)
+        local name = self.playerName
+        if not name then return end
+        local res = WGB.Inspection and WGB.Inspection.results[name] or nil
+        if res then WGB.InspectionPopup:Show(name, res) end
+    end)
+    row:Hide()
+    return row
+end
 
 local function build()
     if frame then return end
@@ -18,31 +54,18 @@ local function build()
     header = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     header:SetPoint("TOPLEFT", 8, -8)
 
+    -- Scroll frame holds all rows; -26 on the right keeps the template scrollbar
+    -- inside the panel rather than spilling past the edge.
+    local scroll = CreateFrame("ScrollFrame", "WGBGroupScroll", frame, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 8, -34)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 8)
+
+    scrollChild = CreateFrame("Frame", "WGBGroupScrollChild", scroll)
+    scrollChild:SetSize(COLS * COL_WIDTH, ROW_HEIGHT)
+    scroll:SetScrollChild(scrollChild)
+
     for i = 1, MAX_ROWS do
-        local row = CreateFrame("Button", nil, frame)
-        row:SetSize(460, 18)
-        row:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 18)
-
-        row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        row.name:SetPoint("LEFT", 0, 0); row.name:SetWidth(160); row.name:SetJustifyH("LEFT")
-
-        row.role = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        row.role:SetPoint("LEFT", 165, 0); row.role:SetWidth(60)
-
-        row.gs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        row.gs:SetPoint("LEFT", 230, 0); row.gs:SetWidth(80)
-
-        row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        row.status:SetPoint("LEFT", 315, 0); row.status:SetWidth(140)
-
-        row:SetScript("OnClick", function(self)
-            local name = self.playerName
-            if not name then return end
-            local res = WGB.Inspection and WGB.Inspection.results[name] or nil
-            if res then WGB.InspectionPopup:Show(name, res) end
-        end)
-        row:Hide()
-        rows[i] = row
+        rows[i] = buildRow(scrollChild, i)
     end
 end
 
@@ -78,6 +101,11 @@ local function refresh()
         end
     end
     for j = i + 1, MAX_ROWS do rows[j]:Hide() end
+
+    -- Grow the scroll child to the number of visible rows so the scrollbar
+    -- engages once the roster overflows the viewport.
+    local lines = math.max(1, math.ceil(i / COLS))
+    scrollChild:SetHeight(lines * ROW_HEIGHT)
 end
 
 WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()

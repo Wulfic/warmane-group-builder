@@ -134,6 +134,63 @@ function MainWindow:RegisterTab(id, label, frame)
     relayoutTabs()
 end
 
+-- Width of a stacked section's body inside the combined scroll child. Panels
+-- draw up to ~508px wide, so 510 keeps everything inside the child (which is
+-- 520 wide and fits the scroll viewport without a horizontal scrollbar).
+local SECTION_WIDTH = 510
+
+-- Lazily build the single scrollable tab that hosts the stacked config/advert/
+-- loot/requirements "sections". Registers itself as a normal tab once.
+function MainWindow:EnsureCombinedTab()
+    if self.combined then return self.combined end
+    if not self.frame then self.frame = buildFrame() end
+
+    local outer = CreateFrame("Frame")
+
+    local scroll = CreateFrame("ScrollFrame", "WGBCombinedScroll", outer, "UIPanelScrollFrameTemplate")
+    -- Leave room on the right so the template scrollbar stays inside the panel.
+    scroll:SetPoint("TOPLEFT", 0, 0)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 0)
+
+    local child = CreateFrame("Frame", "WGBCombinedScrollChild", scroll)
+    child:SetSize(SECTION_WIDTH + 10, 10)
+    scroll:SetScrollChild(child)
+
+    self.combined = { outer = outer, scroll = scroll, child = child, y = -4, sections = {} }
+    self:RegisterTab("setup", L["SETUP"], outer)
+    return self.combined
+end
+
+-- Add a panel frame as a stacked section in the combined scroll tab. Each
+-- section gets a header label and a divider, and is given a fixed height so the
+-- following section flows beneath it.
+function MainWindow:RegisterSection(id, label, frame, height)
+    local c = self:EnsureCombinedTab()
+    local child = c.child
+
+    local hdr = child:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    hdr:SetPoint("TOPLEFT", child, "TOPLEFT", 4, c.y - 4)
+    hdr:SetText(label)
+
+    local line = child:CreateTexture(nil, "ARTWORK")
+    line:SetTexture(0.5, 0.5, 0.5, 0.8)
+    line:SetSize(SECTION_WIDTH, 1)
+    line:SetPoint("TOPLEFT", child, "TOPLEFT", 4, c.y - 26)
+
+    frame:SetParent(child)
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", child, "TOPLEFT", 4, c.y - 32)
+    frame:SetWidth(SECTION_WIDTH)
+    frame:SetHeight(height)
+    frame:Show()
+
+    -- header (32) + body + trailing gap (24)
+    c.y = c.y - 32 - height - 24
+    child:SetHeight(-c.y + 10)
+
+    table.insert(c.sections, { id = id, label = label, frame = frame })
+end
+
 function MainWindow:OpenTab(id)
     if not self.frame then return end
     local tab = self.tabById[id]

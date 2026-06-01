@@ -88,6 +88,6 @@ end
 
 WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()
     build()
-    WGB.MainWindow:RegisterTab("config", L["CONFIG"], frame)
+    WGB.MainWindow:RegisterSection("config", L["CONFIG"], frame, 230)
     refresh()
 end)

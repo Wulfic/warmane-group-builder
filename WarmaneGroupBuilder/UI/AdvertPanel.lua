@@ -160,7 +160,7 @@ end
 
 WGB.Events:Register("WGB_PLAYER_LOGIN", Panel, function()
     build()
-    WGB.MainWindow:RegisterTab("advert", L["ADVERTISEMENT"], frame)
+    WGB.MainWindow:RegisterSection("advert", L["ADVERTISEMENT"], frame, 330)
     Panel:Refresh()
 end)
 WGB.Events:Register("REQUIREMENTS_CHANGED", Panel, function() Panel:Refresh() end)
