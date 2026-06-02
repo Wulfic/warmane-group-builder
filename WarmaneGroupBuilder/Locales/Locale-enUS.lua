@@ -124,15 +124,11 @@ L["GROUP_STATUS"]                 = "Group Status"
 L["RESCAN"]                       = "Rescan"
 L["RESCAN_TOOLTIP"]               = "Re-inspect everyone not yet approved"
 
--- MS / OS roll tracker
+-- Roll-spec tracker
 L["MS_TRACKER"]                   = "MS Tracker"
-L["MS_MS"]                        = "MS"
-L["MS_OS"]                        = "OS"
 L["MS_NO_SPEC"]                   = "(unknown)"
 L["MS_RESET"]                     = "Reset All"
-L["MS_RESET_TOOLTIP"]             = "Reset everyone to MS and clear spec overrides (start of a new roll)."
-L["MS_SPEC_TOOLTIP"]              = "Auto-set to the player's actual spec. Click to cycle specs when they are rolling for a different one (turns yellow)."
-L["MS_ROLL_TOOLTIP"]              = "Toggle this player between Main Spec (MS) and Off Spec (OS) for loot rolls."
+L["MS_RESET_TOOLTIP"]             = "Reset every player back to their detected spec (start of a new roll)."
 L["INSPECTING"]                   = "Inspecting %s..."
 L["INSPECT_TIMEOUT"]              = "Inspect timed out for %s"
 L["APPROVE"]                      = "Approve"

@@ -1,13 +1,12 @@
 -- Modules/MSTracker.lua
--- Main-spec / off-spec roll tracker. It is common on Warmane PUGs to join the
--- raid as one spec but roll for gear of a *different* spec, so the loot master
--- needs a quick way to see who is rolling MS vs OS and which spec each person is
--- actually rolling for.
+-- Roll-spec tracker. It is common on Warmane PUGs to join the raid as one spec
+-- but roll for gear of a *different* spec, so the loot master needs a quick way
+-- to see (and change) which spec each person is actually rolling for.
 --
 -- Each grouped player gets an auto-detected spec (pulled from the Inspection
--- results) which is auto-selected. The leader can override that spec (e.g. a
--- detected Balance druid who is actually rolling for a Restoration off-set) and
--- flip each player between MS and OS to resolve rolls (MS > OS).
+-- results) which is auto-selected. The leader can override that spec per player
+-- by picking any of that class's specs (e.g. a detected Balance druid who is
+-- actually rolling for a Restoration off-set).
 --
 -- State is SESSION-ONLY on purpose: roll intent is transient per item and is
 -- reset between items, so nothing is persisted to saved variables.
@@ -15,8 +14,7 @@
 local WGB = _G.WGB
 
 local MSTracker = {
-    roll         = {},   -- name -> "MS" | "OS"   (default MS)
-    specOverride = {},   -- name -> spec string   (manual override of detected spec)
+    specOverride = {},   -- name -> spec string (manual override of detected spec)
 }
 WGB.MSTracker = MSTracker
 
@@ -54,37 +52,9 @@ function MSTracker:SetSpec(name, spec)
     fire()
 end
 
--- Advance the tracked spec to the next spec of the player's class. Used by the
--- one-click spec cell in the UI.
-function MSTracker:CycleSpec(name, class)
-    local specs = class and WGB.ClassSpecs[class]
-    if not specs or #specs == 0 then return end
-    local cur = self:GetSpec(name)
-    local idx = 0
-    for i, s in ipairs(specs) do
-        if s == cur then idx = i break end
-    end
-    local nextSpec = specs[(idx % #specs) + 1]
-    self:SetSpec(name, nextSpec)
-end
-
-function MSTracker:GetRoll(name)
-    return self.roll[name] or "MS"
-end
-
-function MSTracker:SetRoll(name, mode)
-    self.roll[name] = (mode == "OS") and "OS" or "MS"
-    fire()
-end
-
-function MSTracker:ToggleRoll(name)
-    self:SetRoll(name, self:GetRoll(name) == "MS" and "OS" or "MS")
-end
-
--- Reset everyone back to MS and drop spec overrides — the natural "new item /
--- new roll" action.
+-- Reset everyone back to their detected spec — the natural "new item / new
+-- roll" action.
 function MSTracker:ResetAll()
-    for k in pairs(self.roll)         do self.roll[k] = nil end
     for k in pairs(self.specOverride) do self.specOverride[k] = nil end
     fire()
 end
@@ -93,18 +63,12 @@ end
 function MSTracker:Prune()
     local present = {}
     for _, name in WGB.IterateGroup() do present[name] = true end
-    for name in pairs(self.roll) do
-        if not present[name] then self.roll[name] = nil end
-    end
     for name in pairs(self.specOverride) do
         if not present[name] then self.specOverride[name] = nil end
     end
 end
 
--- A kicked/leaving player should not keep a tracked roll.
+-- A kicked/leaving player should not keep a tracked override.
 WGB.Events:Register("PLAYER_KICKED", MSTracker, function(self, name)
-    if name then
-        self.roll[name] = nil
-        self.specOverride[name] = nil
-    end
+    if name then self.specOverride[name] = nil end
 end)

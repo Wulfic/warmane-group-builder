@@ -1,9 +1,8 @@
 -- UI/MSTrackerPanel.lua
 -- Roll-management tab. Lists every grouped player with their auto-detected spec
--- (auto-selected) and an MS/OS toggle. Click the spec cell to cycle to a
--- different spec when the player is rolling for an off-set; the cell turns
--- yellow to flag that the tracked spec differs from what they joined as. Click
--- the MS/OS cell to flip their roll category.
+-- (auto-selected) and a dropdown holding that class's specs. When a player is
+-- rolling for a different spec than they joined as, pick the rolled spec from
+-- the dropdown; the row label turns yellow to flag the override.
 
 local WGB = _G.WGB
 local L = WGB.L
@@ -17,7 +16,7 @@ local scrollChild
 local refresh   -- forward declaration: build()'s Reset button captures this
 
 local MAX_ROWS   = 40
-local ROW_HEIGHT = 20
+local ROW_HEIGHT = 26
 local ROW_WIDTH  = 470
 
 -- Resolve a player's class token, preferring inspect data but falling back to
@@ -38,41 +37,26 @@ local function buildRow(parent, i)
     row.name:SetPoint("LEFT", 0, 0)
     row.name:SetWidth(140); row.name:SetJustifyH("LEFT")
 
-    -- Spec cell: clicking cycles through the class's specs (auto-detected by
-    -- default, yellow when manually pointed at a different roll spec).
-    row.spec = CreateFrame("Button", nil, row)
-    row.spec:SetSize(150, ROW_HEIGHT)
-    row.spec:SetPoint("LEFT", 144, 0)
-    row.spec.text = row.spec:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    row.spec.text:SetAllPoints()
-    row.spec.text:SetJustifyH("LEFT")
-    row.spec:SetScript("OnClick", function(self)
-        local name = row.playerName
-        if name then WGB.MSTracker:CycleSpec(name, row.class) end
+    -- Per-player spec dropdown: lists that class's specs, auto-selected to the
+    -- detected spec, changeable to whatever spec they are rolling for.
+    row.specDD = CreateFrame("Frame", "WGBMSSpecDD" .. i, row, "UIDropDownMenuTemplate")
+    row.specDD:SetPoint("LEFT", 132, 0)
+    UIDropDownMenu_SetWidth(row.specDD, 130)
+    UIDropDownMenu_Initialize(row.specDD, function()
+        local name  = row.playerName
+        local class = row.class
+        local specs = class and WGB.ClassSpecs[class]
+        if not name or not specs then return end
+        for _, spec in ipairs(specs) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text  = spec
+            info.value = spec
+            info.func  = function()
+                WGB.MSTracker:SetSpec(name, spec)
+            end
+            UIDropDownMenu_AddButton(info)
+        end
     end)
-    row.spec:SetScript("OnEnter", function(self)
-        if not row.playerName then return end
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(L["MS_SPEC_TOOLTIP"], nil, nil, nil, nil, true)
-        GameTooltip:Show()
-    end)
-    row.spec:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    -- MS/OS toggle.
-    row.roll = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    row.roll:SetSize(50, ROW_HEIGHT - 2)
-    row.roll:SetPoint("LEFT", 300, 0)
-    row.roll:SetScript("OnClick", function(self)
-        local name = row.playerName
-        if name then WGB.MSTracker:ToggleRoll(name) end
-    end)
-    row.roll:SetScript("OnEnter", function(self)
-        if not row.playerName then return end
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(L["MS_ROLL_TOOLTIP"], nil, nil, nil, nil, true)
-        GameTooltip:Show()
-    end)
-    row.roll:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     row:Hide()
     return row
@@ -119,7 +103,7 @@ refresh = function()
     local mst = WGB.MSTracker
     mst:Prune()
 
-    local i, msCount, osCount = 0, 0, 0
+    local i, overridden = 0, 0
     for unit, name in WGB.IterateGroup() do
         i = i + 1
         local row = rows[i]; if not row then break end
@@ -131,32 +115,30 @@ refresh = function()
         row.name:SetText((class and WGB.ClassColor(class) or WGB.COLOR.WHITE) .. (name or "?") .. "|r")
 
         local spec = mst:GetSpec(name)
-        if spec then
-            -- Detected spec shows in class color; a manual off-spec override is
-            -- highlighted yellow so the loot master can see who is rolling for a
-            -- spec other than the one they joined as.
-            local color = mst:IsOverridden(name) and WGB.COLOR.YELLOW
-                or (class and WGB.ClassColor(class) or WGB.COLOR.WHITE)
-            row.spec.text:SetText(color .. spec .. "|r")
+        if class and WGB.ClassSpecs[class] then
+            UIDropDownMenu_EnableDropDown(row.specDD)
+            UIDropDownMenu_SetSelectedValue(row.specDD, spec)
+            if spec then
+                -- A manual off-spec override is highlighted yellow so the loot
+                -- master can see who is rolling for a spec other than the one
+                -- they joined as.
+                local color = mst:IsOverridden(name) and WGB.COLOR.YELLOW or WGB.COLOR.WHITE
+                UIDropDownMenu_SetText(row.specDD, color .. spec .. "|r")
+            else
+                UIDropDownMenu_SetText(row.specDD, WGB.COLOR.GREY .. L["MS_NO_SPEC"] .. "|r")
+            end
         else
-            row.spec.text:SetText(WGB.COLOR.GREY .. (L["MS_NO_SPEC"]) .. "|r")
+            UIDropDownMenu_SetText(row.specDD, WGB.COLOR.GREY .. L["MS_NO_SPEC"] .. "|r")
+            UIDropDownMenu_DisableDropDown(row.specDD)
         end
-
-        local roll = mst:GetRoll(name)
-        if roll == "OS" then
-            row.roll:SetText(WGB.Color(WGB.COLOR.ORANGE, L["MS_OS"]))
-            osCount = osCount + 1
-        else
-            row.roll:SetText(WGB.Color(WGB.COLOR.GREEN, L["MS_MS"]))
-            msCount = msCount + 1
-        end
+        if mst:IsOverridden(name) then overridden = overridden + 1 end
     end
     for j = i + 1, MAX_ROWS do rows[j]:Hide() end
 
-    header:SetText(("%sMS Tracker:%s  %s %d  %s %d"):format(
+    header:SetText(("%sMS Tracker:%s  %s  %s"):format(
         WGB.COLOR.ORANGE, WGB.COLOR.RESET,
-        WGB.Color(WGB.COLOR.GREEN, L["MS_MS"]), msCount,
-        WGB.Color(WGB.COLOR.ORANGE, L["MS_OS"]), osCount))
+        ("Players %d"):format(i),
+        WGB.Color(WGB.COLOR.YELLOW, ("Off-spec rolls %d"):format(overridden))))
 
     scrollChild:SetHeight(math.max(1, i) * ROW_HEIGHT)
 end
